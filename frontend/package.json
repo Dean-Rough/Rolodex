@@ -1,0 +1,29 @@
+{
+  "name": "rolodex-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "test": "jest"
+  },
+  "dependencies": {
+    "next": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "tailwindcss": "latest",
+    "@geist-ui/react": "latest",
+    "@geist-ui/icons": "latest",
+    "@shadcn/ui": "latest",
+    "framer-motion": "latest"
+  },
+  "devDependencies": {
+    "eslint": "latest",
+    "jest": "latest",
+    "@testing-library/react": "latest",
+    "@types/jest": "latest",
+    "typescript": "latest"
+  }
+} 
