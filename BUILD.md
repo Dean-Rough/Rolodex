@@ -57,10 +57,10 @@
 ---
 
 ## 7. Testing
-- [ ] `npm run lint` (in frontend/)
-- [ ] `npm run type-check` (in frontend/)
-- [ ] `npm run test` (in frontend/)
-- [ ] `npx playwright test` (UI)
+- [x] `npm run lint` (in frontend/)
+- [x] `npm run type-check` (in frontend/)
+- [x] `npm run test` (in frontend/)
+- [x] `npx playwright test` (UI) - ✅ *Setup complete, 6 tests passing*
 
 ---
 
@@ -73,8 +73,8 @@
 ---
 
 ## 9. Troubleshooting
-- [ ] See DEVELOPMENT.md for common issues
-- [ ] Ask in #dev-support or ping Dean
+- [x] See DEVELOPMENT.md for common issues
+- [x] Ask in #dev-support or ping Dean
 
 ---
 
