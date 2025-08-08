@@ -1,0 +1,60 @@
+{
+  "manifest_version": 3,
+  "name": "Rolodex - FF&E Product Saver",
+  "version": "2.0.0",
+  "description": "Securely save FF&E product images to your Rolodex library with right-click. Professional interior design workflow tool.",
+  "permissions": [
+    "contextMenus",
+    "storage",
+    "notifications",
+    "tabs",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "http://localhost:*/*",
+    "https://*.rolodex.app/*",
+    "https://api.rolodex.app/*",
+    "https://app.rolodex.app/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Rolodex - Save Images to Library"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; frame-ancestors 'none'; upgrade-insecure-requests;"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["config.js"],
+      "matches": ["<all_urls>"]
+    }
+  ],
+  "minimum_chrome_version": "88",
+  "author": "Rolodex Team",
+  "homepage_url": "https://rolodex.app",
+  "commands": {
+    "_execute_action": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+R",
+        "mac": "Command+Shift+R"
+      },
+      "description": "Open Rolodex popup"
+    }
+  },
+  "externally_connectable": {
+    "matches": [
+      "https://*.rolodex.app/*",
+      "http://localhost:3000/*",
+      "http://localhost:8000/*"
+    ]
+  },
+  "incognito": "not_allowed"
+} 
