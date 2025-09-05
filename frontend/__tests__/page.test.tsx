@@ -8,7 +8,7 @@ describe('Home page', () => {
     const heading = screen.getByRole('heading', { name: /welcome to rolodex/i })
     expect(heading).toBeInTheDocument()
     
-    const description = screen.getByText(/your personal knowledge management system is ready to go/i)
+    const description = screen.getByText(/your personal ff&e product management system for interior design professionals\./i)
     expect(description).toBeInTheDocument()
   })
 })

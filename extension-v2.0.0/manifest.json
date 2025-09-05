@@ -33,8 +33,11 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["config.js"],
-      "matches": ["<all_urls>"]
+      "resources": ["config.js", "popup.js"],
+      "matches": [
+        "https://*.rolodex.app/*",
+        "http://localhost:3000/*"
+      ]
     }
   ],
   "minimum_chrome_version": "88",

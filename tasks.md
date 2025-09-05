@@ -1,439 +1,227 @@
-# AI Agent Tasks - Rolodex 10/10 Recovery Mission
+# Rolodex 10/10 Remediation Plan — Ultra‑Granular Checklist
 
-This file tracks tasks for AI agents using git worktrees and tmux sessions to achieve 10/10 across all audit categories.
+Objective: Drive every subsystem (auth, API, DB, UI, extension, testing, CI/CD, security, perf) to 10/10. Tasks are grouped by priority with explicit steps, commands, code targets, acceptance criteria (AC), and QA.
 
-## 🚨 CRITICAL SECURITY FIXES (Priority 1)
+Legend: P0 = Critical, P1 = High, P2 = Medium, P3 = Polish. DRI = directly responsible individual.
 
-### Task 1: Database Security Hardening
-- **Branch**: security/database-hardening
-- **Status**: pending
-- **Session**: 
-- **Description**: Fix SQL injection vulnerability in database connection and implement secure connection validation
-- **Files**: `backend/main.py`, `backend/config.py`
-- **Acceptance Criteria**:
-  - Validate DATABASE_URL format on startup
-  - Use parameterized connections only
-  - Add connection pooling with proper timeout/retry logic
-  - Environment variable validation with secure defaults
+## P0 — Critical (Security/Reliability Blockers)
 
-### Task 2: Authentication System Implementation
-- **Branch**: security/auth-system
-- **Status**: pending
-- **Session**: 
-- **Description**: Implement complete JWT authentication system with Supabase integration
-- **Files**: `backend/auth.py`, `backend/middleware.py`, `frontend/lib/auth.ts`
-- **Acceptance Criteria**:
-  - JWT token generation and validation
-  - Protected routes middleware
-  - User registration/login/logout endpoints
-  - Frontend auth context and session management
-  - Rate limiting on auth endpoints
+1) Backend: Fix DB env var resolution (import‑time failure)
+- Files: `backend/main.py`
+- Steps:
+  1. Add fallback to `DATABASE_URL`; add preflight check; enable `pool_pre_ping=True`.
+  2. Guard engine creation if URL missing; raise explicit error.
+- Snippet:
+  """
+  DATABASE_URL = os.getenv("SUPABASE_DB_URL") or os.getenv("DATABASE_URL")
+  if not DATABASE_URL:
+      raise RuntimeError("DATABASE_URL is required")
+  engine = create_engine(DATABASE_URL, pool_pre_ping=True)
+  """
+- AC: `uvicorn backend.main:app --reload` boots when only `DATABASE_URL` set; health check works.
+- QA: `curl -s localhost:8000/ | jq .` returns `{status: ok}` (after DB available).
 
-### Task 3: Extension Security & Environment Config
-- **Branch**: security/extension-config
-- **Status**: pending
-- **Session**: 
-- **Description**: Fix hardcoded localhost URLs and implement secure environment configuration
-- **Files**: `extension/background.js`, `extension/config.js`, `extension/manifest.json`
-- **Acceptance Criteria**:
-  - Dynamic API endpoint detection (dev/prod)
-  - Secure storage for user tokens
-  - HTTPS enforcement for production
-  - Proper error handling and user feedback
+2) Backend: CORS for Web + Extension
+- Files: `backend/main.py`
+- Steps:
+  1. `from fastapi.middleware.cors import CORSMiddleware`
+  2. Add middleware: allow origins `http://localhost:3000`, `https://*.rolodex.app`.
+- AC: Browser requests from Next app and extension succeed without CORS errors.
+- QA: Use browser console + `curl -H "Origin: http://localhost:3000" -I http://localhost:8000/` shows CORS headers.
 
-## 🏗️ CORE BACKEND IMPLEMENTATION (Priority 2)
+3) Backend: Secure `POST /api/items` with JWT
+- Files: `backend/main.py`, `backend/requirements.txt`
+- Steps:
+  1. Choose provider (Supabase JWT or Clerk). Start with Bearer JWT verify stub (pydantic/jose) → map to `owner_id`.
+  2. Validate payload (`img_url: HttpUrl`), sanitize; return 201 on success.
+  3. Reject unauthenticated (401) and invalid (422) requests.
+- AC: Unauthed write → 401; Authed write → row inserted with `owner_id`.
+- QA: `curl -H "Authorization: Bearer <token>" -d '{"img_url":"https://..."}' ...` passes; DB shows owner.
 
-### Task 4: AI Extraction Pipeline
-- **Branch**: feature/ai-extraction
-- **Status**: pending
-- **Session**: 
-- **Description**: Implement OpenAI-powered product data extraction pipeline
-- **Files**: `backend/services/extraction.py`, `backend/models/items.py`
-- **Acceptance Criteria**:
-  - OpenAI GPT-4V integration for image analysis
-  - Structured data extraction (title, vendor, price, color, etc.)
-  - Fallback mechanisms for extraction failures
-  - Vector embedding generation with pgvector
-  - Async processing with Celery/Redis
+4) Extension (legacy) deprecate or quarantine
+- Files: `extension/`, root docs
+- Steps:
+  1. Add `extension/README.md` marking dev‑only; or move to `legacy/extension/`.
+  2. Ensure packaging/links reference only `extension-v2.0.0/`.
+- AC: No production artifact references legacy extension.
+- QA: Grep repo for `extension/` usage in docs and scripts.
 
-### Task 5: Complete Items API
-- **Branch**: feature/items-api
-- **Status**: pending
-- **Session**: 
-- **Description**: Build comprehensive items CRUD API with search and filtering
-- **Files**: `backend/routes/items.py`, `backend/services/search.py`
-- **Acceptance Criteria**:
-  - Full CRUD operations (Create, Read, Update, Delete)
-  - Vector similarity search
-  - Advanced filtering (category, price range, color)
-  - Pagination and sorting
-  - Bulk operations support
-  - Input validation and sanitization
+5) Extension v2: Popup uses env config (no localhost hardcode)
+- Files: `extension-v2.0.0/popup.html`, `extension-v2.0.0/popup.js` (new)
+- Steps:
+  1. Add `<script src="config.js"></script>` and new `popup.js` to compute web app URL.
+  2. Replace `<a href="http://localhost:3000">` with `<a id="open-app" href="#">` and set via script.
+- Snippet (popup.js):
+  """
+  (async () => { const cfg = new RolodexConfig();
+    const href = await cfg.getWebAppUrl();
+    const a = document.getElementById('open-app'); a.href = href; a.textContent = 'Open Rolodex Web App'; })();
+  """
+- AC: Popup opens correct env (dev/staging/prod) based on availability.
+- QA: Load unpacked → click link; inspect logs.
 
-### Task 6: Projects & Moodboards API
-- **Branch**: feature/projects-api
-- **Status**: pending
-- **Session**: 
-- **Description**: Implement projects management and moodboard generation
-- **Files**: `backend/routes/projects.py`, `backend/services/moodboard.py`
-- **Acceptance Criteria**:
-  - Project CRUD operations
-  - Item-to-project relationships
-  - Moodboard canvas generation
-  - PDF/JPG export functionality
-  - DALL-E 3 integration for mood generation
-  - Collaborative sharing features
+6) Frontend: Fix failing unit test copy mismatch
+- Files: `frontend/__tests__/page.test.tsx` (or `frontend/app/page.tsx`)
+- Steps:
+  1. Update test to match actual copy or extract copy to constants and reuse.
+  2. Run tests.
+- Commands: `cd frontend && npm test`
+- AC: Tests pass locally.
 
-## 🎨 FRONTEND IMPLEMENTATION (Priority 3)
+7) Frontend: Pin critical deps for reproducibility
+- Files: `frontend/package.json`
+- Steps:
+  1. Replace `"latest"` with pinned versions (e.g., next `14.x`, react `18.3.1`, typescript `5.x`).
+  2. `npm i && npm run build` to verify lockfile.
+- AC: Deterministic build (`npm ci`) succeeds.
 
-### Task 7: UI Component Library
-- **Branch**: feature/ui-components
-- **Status**: pending
-- **Session**: 
-- **Description**: Build complete shadcn/ui component library with Geist fonts
-- **Files**: `frontend/components/ui/`, `frontend/lib/utils.ts`
-- **Acceptance Criteria**:
-  - All shadcn/ui components properly configured
-  - Geist font implementation (replace Inter)
-  - Dark mode support with theme toggle
-  - Responsive design system
-  - Accessibility compliance (WCAG AA)
-  - Framer Motion animations
+8) Git hygiene: Ignore build artifacts and tsbuildinfo
+- Files: `frontend/.gitignore`
+- Steps: Add `.next/`, `out/`, `coverage/`, `*.tsbuildinfo`.
+- AC: `git status` clean after build/export.
 
-### Task 8: Authentication UI
-- **Branch**: feature/auth-ui
-- **Status**: pending
-- **Session**: 
-- **Description**: Create complete authentication flow UI
-- **Files**: `frontend/app/(auth)/`, `frontend/components/auth/`
-- **Acceptance Criteria**:
-  - Login/signup forms with validation
-  - Password reset flow
-  - User profile management
-  - Session persistence and auto-renewal
-  - Error handling with user-friendly messages
-  - Loading states and feedback
+9) Env normalization: Doc + examples consistent
+- Files: `.env.example`, `BUILD.md`, `DEVELOPMENT.md`
+- Steps:
+  1. Replace Vite variables with Next patterns (`NEXT_PUBLIC_*`).
+  2. Document `DATABASE_URL` (primary) and optional `SUPABASE_DB_URL`.
+- AC: Fresh clone can set envs and start FE/BE without guesswork.
 
-### Task 9: Main Application Interface
-- **Branch**: feature/main-app
-- **Status**: pending
-- **Session**: 
-- **Description**: Build the core application interface with library, search, and projects
-- **Files**: `frontend/app/(app)/`, `frontend/components/library/`, `frontend/components/search/`
-- **Acceptance Criteria**:
-  - Library grid view with infinite scroll
-  - Advanced search and filtering UI
-  - Item detail modals with edit functionality
-  - Project management interface
-  - Moodboard creation and editing
-  - Drag-and-drop functionality
-  - Export controls
+## P1 — High (Feature Parity + Correctness)
 
-## 🧪 TESTING & QUALITY (Priority 4)
+10) API: `/health` endpoint for extension env detection
+- Files: `backend/main.py`
+- Steps: Add GET `/health` returning `{status:'ok', db:'connected'}`.
+- AC: `config.js` health checks succeed (dev/staging/prod).
 
-### Task 10: Comprehensive Backend Testing
-- **Branch**: feature/backend-tests
-- **Status**: pending
-- **Session**: 
-- **Description**: Achieve 100% test coverage for backend
-- **Files**: `backend/tests/`, `backend/conftest.py`
-- **Acceptance Criteria**:
-  - Unit tests for all endpoints
-  - Integration tests for database operations
-  - AI extraction pipeline testing
-  - Authentication flow testing
-  - Performance and load testing
-  - Security vulnerability scanning
+11) API: Items search/read with pagination
+- Files: Backend routers/schemas (add `backend/schemas.py` if desired)
+- Steps:
+  1. Implement `GET /api/items?query=&hex=&price_max=&limit=&cursor=`.
+  2. Validate params; cap limit; return `items`, `nextCursor`.
+- AC: Filtered results consistent; documented types.
 
-### Task 11: Frontend Testing Suite
-- **Branch**: feature/frontend-tests
-- **Status**: pending
-- **Session**: 
-- **Description**: Complete frontend testing with Jest and Playwright
-- **Files**: `frontend/__tests__/`, `frontend/tests/`
-- **Acceptance Criteria**:
-  - Unit tests for all components
-  - Integration tests for user flows
-  - E2E tests for critical paths
-  - Accessibility testing
-  - Performance testing
-  - Visual regression testing
+12) API: Consistent error envelope + handlers
+- Files: `backend/main.py`
+- Steps: Add exception handlers for 422/404/500 → `{error:{code,message}}`.
+- AC: No raw SQL/errors leaked; clients receive consistent shape.
 
-### Task 12: Extension Testing & E2E
-- **Branch**: feature/extension-tests
-- **Status**: pending
-- **Session**: 
-- **Description**: Complete extension testing and end-to-end validation
-- **Files**: `extension/tests/`, `tests/e2e/`
-- **Acceptance Criteria**:
-  - Extension functionality testing
-  - Cross-browser compatibility
-  - Full user journey E2E tests
-  - Error scenario testing
-  - Performance validation
+13) DB: Indexes for common filters
+- Files: `docs/schema.sql` (add migration snippet)
+- Steps: Create indexes on `items(created_at)`, `items(vendor)`, `items(colour_hex)`, optional trigram on `title`.
+- AC: Queries <100ms on 10k rows (local).
 
-## ⚡ PERFORMANCE & OPTIMIZATION (Priority 5)
+14) Extension v2: Auth handshake
+- Files: `extension-v2.0.0/background.js`, `config.js`, FE route `/auth/extension`
+- Steps:
+  1. Add message action `authenticate` → open web app `/auth/extension`.
+  2. FE route sets token into `chrome.storage` via `chrome.runtime.sendMessage` callback.
+  3. Store token with hash+timestamp (already in `SecureStorage`).
+- AC: After login, `checkAuth` returns true; token rotates on expiry.
 
-### Task 13: Database Optimization
-- **Branch**: performance/database
-- **Status**: pending
-- **Session**: 
-- **Description**: Optimize database performance and implement proper indexing
-- **Files**: `docs/schema.sql`, `backend/migrations/`
-- **Acceptance Criteria**:
-  - Proper indexing on all query columns
-  - Vector search optimization
-  - Query performance monitoring
-  - Connection pooling optimization
-  - Backup and recovery procedures
+15) Frontend scaffold: Components/lib/routes
+- Files: `frontend/components/*`, `frontend/lib/api.ts`, `frontend/app/(dashboard)/*`, `frontend/app/auth/extension/page.tsx`
+- Steps: Create minimal components, API client with base URL, and routes.
+- AC: `/dashboard` renders scaffold; `/auth/extension` completes handshake.
 
-### Task 14: Frontend Performance
-- **Branch**: performance/frontend
-- **Status**: pending
-- **Session**: 
-- **Description**: Optimize frontend bundle size and runtime performance
-- **Files**: `frontend/next.config.js`, `frontend/components/`
-- **Acceptance Criteria**:
-  - Code splitting and lazy loading
-  - Image optimization and caching
-  - Bundle size analysis and optimization
-  - Runtime performance monitoring
-  - Core Web Vitals optimization
-  - Service worker implementation
+16) FE Security headers (static export)
+- Files: `frontend/next.config.js` or hosting config
+- Steps: Add headers: CSP, `frame-ancestors 'none'`, `X-Content-Type-Options`, `Referrer-Policy`.
+- AC: Verified in deployed/static preview.
 
-### Task 15: API Performance & Caching
-- **Branch**: performance/api
-- **Status**: pending
-- **Session**: 
-- **Description**: Implement caching and API performance optimization
-- **Files**: `backend/middleware/cache.py`, `backend/services/`
-- **Acceptance Criteria**:
-  - Redis caching layer
-  - API response optimization
-  - Background job processing
-  - Rate limiting implementation
-  - API monitoring and alerting
+## P2 — Medium (Quality/Scalability/UX)
 
-## 🚀 DEPLOYMENT & PRODUCTION (Priority 6)
+17) API: `/api/extract` scaffold
+- Files: `backend/main.py` (or `routers/extract.py`), `schemas.py`
+- Steps: Define request/response models; return deterministic mock until AI integrated.
+- AC: Validates inputs; unit tests green.
 
-### Task 16: Production Configuration
-- **Branch**: deployment/production-config
-- **Status**: pending
-- **Session**: 
-- **Description**: Set up production-ready configuration and environment
-- **Files**: `docker/`, `deploy/`, `.env.production`
-- **Acceptance Criteria**:
-  - Docker containerization
-  - Environment-specific configurations
-  - Secrets management
-  - Health checks and monitoring
-  - Error logging and alerting
+18) Projects CRUD + associations
+- Files: Backend routers; DB tables exist.
+- Steps: Implement create/get/add_item/remove_item with auth checks and 404/403 handling.
+- AC: Endpoints tested; constraints enforced.
 
-### Task 17: CI/CD Pipeline
-- **Branch**: deployment/cicd
-- **Status**: pending
-- **Session**: 
-- **Description**: Implement complete CI/CD pipeline with automated testing
-- **Files**: `.github/workflows/`, `deploy/scripts/`
-- **Acceptance Criteria**:
-  - Automated testing on PR
-  - Deployment pipeline to staging/production
-  - Database migration handling
-  - Rollback procedures
-  - Performance monitoring in CI
+19) Pagination & rate limits
+- Files: Backend
+- Steps: Enforce max limit; add simple rate limiting (e.g., slowapi) to write endpoints.
+- AC: Excessive writes → 429; stable pagination semantics documented.
 
-## 📊 FINAL VALIDATION (Priority 7)
+20) Frontend: Items grid + search UI
+- Files: `frontend/components/ItemsGrid.tsx`, pages under dashboard
+- Steps: Grid with loading/error/empty states; debounced search; filter chips.
+- AC: Keyboard accessible; passes basic a11y checks.
 
-### Task 18: Security Audit & Penetration Testing
-- **Branch**: validation/security-audit
-- **Status**: pending
-- **Session**: 
-- **Description**: Comprehensive security audit and vulnerability assessment
-- **Files**: `security/`, `docs/security.md`
-- **Acceptance Criteria**:
-  - Automated security scanning
-  - Manual penetration testing
-  - Dependency vulnerability checks
-  - Security documentation
-  - Incident response procedures
+21) Frontend: State with React Query
+- Files: `frontend/lib/query.ts`, providers
+- Steps: Configure query client; retries/backoff; cache invalidation on mutations.
+- AC: Network resiliency improved; fewer refetches.
 
-### Task 19: Performance Benchmarking
-- **Branch**: validation/performance-benchmark
-- **Status**: pending
-- **Session**: 
-- **Description**: Comprehensive performance testing and benchmarking
-- **Files**: `benchmarks/`, `docs/performance.md`
-- **Acceptance Criteria**:
-  - Load testing with realistic data volumes
-  - Stress testing edge cases
-  - Performance regression testing
-  - Optimization recommendations
-  - Performance monitoring setup
+22) Testing: FE+BE unit/integration
+- Files: `backend/tests/*`, `frontend/__tests__/*`
+- Steps: Add 10–15 API tests; 10+ FE tests for components and API client.
+- AC: Coverage ≥90% with thresholds; CI enforced.
 
-### Task 20: Final Audit & Validation
-- **Branch**: validation/final-audit
-- **Status**: pending
-- **Session**: 
-- **Description**: Run complete forensic audit to validate 10/10 achievement
-- **Files**: `audit/`, `docs/final-report.md`
-- **Acceptance Criteria**:
-  - Re-run original forensic audit script
-  - Validate all security fixes
-  - Confirm all features implemented
-  - Performance metrics validation
-  - Documentation accuracy verification
-  - **SUCCESS CRITERIA**: All systems scoring 10/10
+23) e2e: Playwright smoke
+- Files: `frontend/tests/*`
+- Steps: Test auth (mock token), dashboard loads, item appears after API call.
+- AC: Stable locally and in CI.
 
-## Task Status Legend
-- **pending**: Available for assignment
-- **claimed**: Assigned to an agent  
-- **in_progress**: Currently being worked on
-- **completed**: Ready for review/merge
-- **intervention_required**: Needs human input
+24) CI/CD: GitHub Actions
+- Files: `.github/workflows/frontend-ci.yml`, `.github/workflows/backend-ci.yml`
+- Steps: FE (lint, type, test, build), BE (pytest, build); cache deps.
+- AC: Required checks for PRs; status visible on PRs.
 
-## Usage
-1. Use `/tmux-spawn <agent-name> <branch-name> <task-description>` to assign tasks
-2. Use `/tmux-status` to check progress
-3. Use `/tmux-list` to see active agents
-4. Agents should work in parallel on independent tasks
-5. Dependencies: Tasks 1-3 must complete before Tasks 4-6, etc.
+## P3 — Polish (Perf, Observability, Docs, Release)
 
-## Success Metrics
-- **Security**: 0 vulnerabilities, all endpoints protected
-- **Functionality**: 100% of documented features working
-- **Performance**: <1s API responses, <2s page loads
-- **Testing**: 100% test coverage, all E2E scenarios passing
-- **Documentation**: 100% accuracy between docs and implementation
+25) Observability: Structured logs + request IDs
+- Files: Backend middleware/logging
+- Steps: Log `{method,path,status,duration_ms,request_id}` JSON; add `X-Request-Id` echo.
+- AC: Logs parseable; errors correlatable.
 
-🎯 **MISSION**: Transform this 1/10 skeleton into a 10/10 production-ready system through systematic parallel development.
+26) Performance: DB pool + timeouts
+- Files: `backend/main.py`
+- Steps: Tune `pool_size`, `max_overflow`, statement timeouts; profile heavy queries.
+- AC: p95 < 150ms for list/search.
+
+27) Security re‑audit: Extension + API
+- Files: Extension manifest/permissions/CSP; backend headers
+- Steps: Restrict `web_accessible_resources`; review host permissions; add API security headers.
+- AC: Pass Chrome store checklist; OWASP top 10 basic mitigations.
+
+28) Documentation alignment
+- Files: `README.md`, `BUILD.md`, `DEVELOPMENT.md`, `AGENTS.md`
+- Steps: Ensure commands, envs, routes accurate; add troubleshooting.
+- AC: New dev completes setup <30 min with no blockers.
+
+29) Release process: Semver + CHANGELOG + packaging
+- Files: `CHANGELOG.md`, scripts
+- Steps: Define release script; tag, changelog update; extension packaging doc.
+- AC: Repeatable releases; artifacts archived.
 
 ---
 
-# 🔍 CHROME EXTENSION FORENSIC AUDIT RESULTS
+## Command Appendix (for quick use)
 
-## Critical Security Issues Discovered (4/10 Security Rating)
+Backend
+- Dev: `cd backend && uvicorn backend.main:app --reload`
+- Test: `pytest -q` (after adding tests)
+- Health: `curl -s localhost:8000/health | jq .`
 
-After comprehensive line-by-line forensic audit against Chrome Extension best practices, **CRITICAL VULNERABILITIES** were identified that require immediate remediation:
+Frontend
+- Dev: `cd frontend && npm run dev`
+- Test: `npm test` | Type: `npm run type-check` | Lint: `npm run lint`
+- E2E: `npm run test:e2e`
 
-### 🚨 P0 Critical Security Fixes Required:
-1. **Hardcoded localhost URLs** - Extension fails in production
-2. **Missing host_permissions** - Network requests blocked 
-3. **Insecure HTTP protocol** - Data transmitted in plaintext
-4. **No Content Security Policy** - XSS vulnerability
-5. **Missing authentication** - Unauthorized API access
-6. **No error handling** - Silent failures, poor UX
-7. **Missing required icons** - Chrome Web Store rejection
+Extension v2
+- Load unpacked: `chrome://extensions` → `extension-v2.0.0/`
+- Logs: `chrome://extensions` → service worker logs
 
-## 📋 CHROME EXTENSION REMEDIATION TASKS
+---
 
-### Task 21: Critical Security Hardening (P0)
-- **Branch**: extension/security-hardening
-- **Status**: pending
-- **Session**: 
-- **Description**: Fix critical security vulnerabilities identified in forensic audit
-- **Files**: `extension/manifest.json`, `extension/background.js`, `extension/config.js`
-- **Acceptance Criteria**:
-  - Replace hardcoded localhost URLs with dynamic environment detection
-  - Add proper host_permissions for production domains
-  - Implement HTTPS-only communication with certificate validation
-  - Add comprehensive Content Security Policy
-  - Create authentication system with JWT tokens
-  - Implement error handling with user notifications
-  - Add rate limiting and request validation
+## Ownership & Sequencing (Suggested 4‑week plan)
+- Week 1 (P0): 1–9
+- Week 2 (P1): 10–16
+- Week 3 (P2): 17–24
+- Week 4 (P2→P3): 25–29
 
-### Task 22: Chrome Web Store Compliance (P0)
-- **Branch**: extension/store-compliance
-- **Status**: pending
-- **Session**: 
-- **Description**: Ensure full compliance with Chrome Web Store policies
-- **Files**: `extension/manifest.json`, `extension/icons/`, `extension/privacy.md`
-- **Acceptance Criteria**:
-  - Create required icon set (16x16, 48x48, 128x128 PNG)
-  - Add comprehensive extension description and metadata
-  - Implement privacy policy and data handling disclosure
-  - Add proper version numbering and update mechanisms
-  - Ensure single-purpose design clarity
-  - Add required screenshots and store assets
-
-### Task 23: Extension Architecture Refactoring (P1)
-- **Branch**: extension/architecture-refactor
-- **Status**: pending
-- **Session**: 
-- **Description**: Refactor extension with proper separation of concerns
-- **Files**: `extension/services/`, `extension/utils/`, `extension/types/`
-- **Acceptance Criteria**:
-  - Create service layer for API communication
-  - Implement configuration management system
-  - Add state management for extension data
-  - Create error handling and retry logic
-  - Implement offline support with local storage
-  - Add background sync capabilities
-
-### Task 24: UI/UX Enhancement (P1)  
-- **Branch**: extension/ui-enhancement
-- **Status**: pending
-- **Session**: 
-- **Description**: Enhance extension UI/UX with modern design and functionality
-- **Files**: `extension/popup.html`, `extension/popup.js`, `extension/styles/`
-- **Acceptance Criteria**:
-  - Redesign popup with modern UI components
-  - Add authentication state management
-  - Implement loading states and progress indicators
-  - Add success/error notification system
-  - Create settings and configuration UI
-  - Add dark/light theme support
-
-### Task 25: Extension Security Testing (P1)
-- **Branch**: extension/security-testing
-- **Status**: pending
-- **Session**: 
-- **Description**: Comprehensive security testing and validation
-- **Files**: `extension/tests/`, `extension/security-audit.js`
-- **Acceptance Criteria**:
-  - Create automated security test suite
-  - Implement CSP violation testing
-  - Add authentication flow testing
-  - Test network security and HTTPS enforcement
-  - Validate permission usage and security
-  - Run penetration testing against extension
-
-### Task 26: Extension Performance Optimization (P2)
-- **Branch**: extension/performance-optimization
-- **Status**: pending
-- **Session**: 
-- **Description**: Optimize extension performance and resource usage
-- **Files**: `extension/background.js`, `extension/content.js`, `extension/webpack.config.js`
-- **Acceptance Criteria**:
-  - Implement lazy loading and code splitting
-  - Optimize background script resource usage
-  - Add performance monitoring and metrics
-  - Implement efficient caching strategies
-  - Minimize extension memory footprint
-  - Add performance budgets and monitoring
-
-### Task 27: Extension Documentation & Publishing (P2)
-- **Branch**: extension/documentation
-- **Status**: pending
-- **Session**: 
-- **Description**: Complete documentation and prepare for Chrome Web Store publishing
-- **Files**: `extension/README.md`, `extension/CHANGELOG.md`, `docs/extension/`
-- **Acceptance Criteria**:
-  - Create comprehensive extension documentation
-  - Add developer guide and API documentation
-  - Prepare Chrome Web Store listing materials
-  - Create user guide and support documentation
-  - Add contribution guidelines
-  - Prepare publishing and release process
-
-## Extension Security Metrics
-- **Current Security Score**: 4/10 ⚠️ **UNACCEPTABLE**
-- **Target Security Score**: 10/10 ✅ **PRODUCTION READY**
-- **Critical Vulnerabilities**: 7 identified
-- **Compliance Violations**: Multiple Chrome Web Store policies
-
-## Extension Remediation Priority
-1. **P0 Tasks (21-22)**: Must complete before any deployment
-2. **P1 Tasks (23-25)**: Required for production release  
-3. **P2 Tasks (26-27)**: Quality and publishing preparation
-
-🎯 **EXTENSION MISSION**: Transform current 4/10 insecure extension into 10/10 Chrome Web Store ready product.
+Gates: A (end P0), B (end P1), C (end P2), D (end P3) as described in ACs.

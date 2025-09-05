@@ -28,7 +28,9 @@
 
 ## 6. Secrets & Env
 - Never commit secrets. Use `.env` (gitignored).
-- See `.env.example` for required keys (DB, OpenAI, storage, etc.)
+- Backend DB: set `DATABASE_URL` (fallback `SUPABASE_DB_URL` also supported).
+- Frontend API base: set `NEXT_PUBLIC_API_BASE_URL` in `frontend/.env.local`.
+- See `.env.example` for required keys (DB, OpenAI, storage, Supabase/Clerk, etc.)
 
 ## 7. Troubleshooting
 - Common issues and fixes:

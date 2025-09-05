@@ -46,9 +46,8 @@ async function saveImageToRolodex(imageUrl, tab) {
     // Check authentication
     const isAuthenticated = await storage.isAuthenticated();
     if (!isAuthenticated) {
-      // Show authentication prompt
       await errorHandler.showError('Please sign in to save images to Rolodex');
-      // Could open authentication flow here
+      await handleAuthentication();
       return;
     }
 
@@ -164,14 +163,21 @@ async function handleAuthentication() {
     });
 
     // Listen for authentication completion
-    const authListener = (tabId, changeInfo, tab) => {
-      if (tabId === authTab.id && changeInfo.url && changeInfo.url.includes('auth-success')) {
-        // Extract token from URL or handle auth completion
-        chrome.tabs.remove(authTab.id);
-        chrome.tabs.onUpdated.removeListener(authListener);
-        
-        console.log('Rolodex: Authentication completed');
-        errorHandler.showSuccess('Successfully signed in to Rolodex!');
+    const authListener = async (tabId, changeInfo, tab) => {
+      try {
+        if (tabId === authTab.id && changeInfo.url && changeInfo.url.includes('auth-success')) {
+          const urlObj = new URL(changeInfo.url);
+          const token = urlObj.searchParams.get('token');
+          if (token) {
+            await storage.storeToken(token);
+            console.log('Rolodex: Token captured from auth-success');
+            errorHandler.showSuccess('Successfully signed in to Rolodex!');
+          }
+          chrome.tabs.remove(authTab.id);
+          chrome.tabs.onUpdated.removeListener(authListener);
+        }
+      } catch (e) {
+        console.error('Rolodex: Auth listener error', e);
       }
     };
 

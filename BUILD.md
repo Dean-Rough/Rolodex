@@ -21,14 +21,15 @@
 - [x] `npm install` (in frontend/)
 - [x] `python3 -m venv venv && source venv/bin/activate` (in backend/)
 - [x] `pip install -r backend/requirements.txt`
-- [x] Copy `.env.example` to `.env` and fill in secrets
+- [x] Copy `.env.example` to `.env` (root) and fill in secrets
+- [x] Create `frontend/.env.local` with `NEXT_PUBLIC_API_BASE_URL=http://localhost:8000`
 
 ---
 
 ## 3. Database & Auth (Supabase)
 - [x] Create a Supabase project at https://app.supabase.com
 - [x] Get your Project URL and anon/public API key
-- [x] Add these to your `.env` and `frontend/.env` as `SUPABASE_URL` and `SUPABASE_KEY`
+- [x] Add these to your `.env` and `frontend/.env.local` as `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` (if using Supabase Auth)
 - [x] Open Supabase SQL editor and run the provided schema (see /docs/schema.sql)
 - [x] Set up Supabase Auth (email/password or social providers)
 - [ ] (Optional) Configure Row Level Security (RLS) and policies
@@ -36,7 +37,7 @@
 ---
 
 ## 4. Backend
-- [x] Update backend config to use Supabase Postgres connection string
+- [x] Update backend config to use Postgres connection string in `DATABASE_URL`
 - [x] `uvicorn backend.main:app --reload`
 - [x] Visit `http://localhost:8000/docs`
 
@@ -49,9 +50,11 @@
 
 ---
 
-## 6. Browser Extension
+## 6. Browser Extension (v2)
 - [x] Chrome → Extensions → Load unpacked → select `extension/`
-- [x] Right-click image → “Save to MyLibrary” appears
+- [x] Load `extension-v2.0.0/` (use v2 only; legacy `extension/` is dev-only)
+- [x] Right-click an image → “Save to Rolodex” appears
+- [x] If prompted to sign in, the extension opens the web app. Visit `/auth/extension?token=dev-token` for dev mode.
 - [x] Save image, check backend for new item
 
 ---
