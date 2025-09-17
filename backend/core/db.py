@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import os
 from functools import lru_cache
+from pathlib import Path
 from typing import Iterator
 
 from sqlalchemy import create_engine
@@ -16,12 +18,11 @@ def get_engine() -> Engine:
     """Create (or return) the shared SQLAlchemy engine."""
 
     settings = get_settings()
-    if not settings.database_url:
-        raise RuntimeError(
-            "DATABASE_URL is required (set SUPABASE_DB_URL or DATABASE_URL in the environment)",
-        )
-
     url = settings.database_url
+    if not url:
+        default_path = Path(os.getenv("ROLODEX_SQLITE_PATH", "./var/rolodex.db")).resolve()
+        default_path.parent.mkdir(parents=True, exist_ok=True)
+        url = f"sqlite:///{default_path}"
 
     if url.startswith("sqlite"):
         return create_engine(url, connect_args={"check_same_thread": False})

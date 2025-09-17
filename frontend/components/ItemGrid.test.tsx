@@ -1,12 +1,16 @@
+import type { ComponentProps } from 'react'
 import React from 'react'
 import { render, screen } from '@testing-library/react'
 import '@testing-library/jest-dom'
 import ItemGrid, { Item } from './ItemGrid'
 
+type ImageProps = ComponentProps<'img'>
+
 // Mock Next.js Image component
 jest.mock('next/image', () => {
-  return function Image({ src, alt, ...props }: any) {
-    return <img src={src} alt={alt} {...props} />
+  return function Image({ src, alt, ...props }: ImageProps) {
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={src as string} alt={alt ?? ''} {...props} />
   }
 })
 

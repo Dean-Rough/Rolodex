@@ -19,7 +19,8 @@ export default function ExtensionAuth() {
       } else {
         setStatus('No token provided. Ensure the extension opened this page with ?token=…')
       }
-    } catch (e) {
+    } catch (error) {
+      console.error('Failed to parse extension URL', error)
       setStatus('Failed to parse URL')
     }
   }, [])

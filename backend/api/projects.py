@@ -4,12 +4,17 @@ from __future__ import annotations
 
 import uuid
 
+import datetime as dt
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import text
+from sqlalchemy import and_, delete, insert, select
+from sqlalchemy.exc import IntegrityError
 
 from backend.api.dependencies import AuthContext, get_auth, rate_limit
 from backend.core.db import get_engine
+from backend.models import project_items_table, projects_table
 
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
@@ -33,13 +38,12 @@ def create_project(
     engine = get_engine()
     with engine.begin() as connection:
         connection.execute(
-            text(
-                """
-                INSERT INTO projects (id, owner_id, name, created_at)
-                VALUES (:id, :owner_id, :name, now())
-                """
-            ),
-            {"id": project_id, "owner_id": auth.user_id, "name": body.name},
+            insert(projects_table).values(
+                id=project_id,
+                owner_id=auth.user_id,
+                name=body.name,
+                created_at=dt.datetime.now(dt.timezone.utc),
+            )
         )
 
     return {"id": project_id, "name": body.name}
@@ -51,26 +55,30 @@ def get_project(project_id: str, auth: AuthContext = Depends(get_auth)):
     with engine.connect() as connection:
         row = (
             connection.execute(
-                text(
-                    """
-                    SELECT id, name, created_at
-                    FROM projects
-                    WHERE id = :id AND owner_id = :owner_id
-                    """
-                ),
-                {"id": project_id, "owner_id": auth.user_id},
-            )
-            .mappings()
-            .first()
+                select(
+                    projects_table.c.id,
+                    projects_table.c.name,
+                    projects_table.c.created_at,
+                ).where(
+                    and_(
+                        projects_table.c.id == project_id,
+                        projects_table.c.owner_id == auth.user_id,
+                    )
+                )
+            ).mappings().first()
         )
 
     if not row:
         raise HTTPException(status_code=404, detail="Project not found")
 
+    created_at = row.get("created_at")
+    if isinstance(created_at, dt.datetime) and created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=dt.timezone.utc)
+
     return {
         "id": row["id"],
         "name": row["name"],
-        "created_at": row["created_at"].isoformat() if row.get("created_at") else None,
+        "created_at": created_at.isoformat() if isinstance(created_at, dt.datetime) else created_at,
     }
 
 
@@ -84,21 +92,25 @@ def add_item_to_project(
     engine = get_engine()
     with engine.begin() as connection:
         project = connection.execute(
-            text("SELECT 1 FROM projects WHERE id=:id AND owner_id=:owner_id"),
-            {"id": project_id, "owner_id": auth.user_id},
+            select(projects_table.c.id).where(
+                and_(
+                    projects_table.c.id == project_id,
+                    projects_table.c.owner_id == auth.user_id,
+                )
+            )
         ).first()
         if not project:
             raise HTTPException(status_code=404, detail="Project not found")
-        connection.execute(
-            text(
-                """
-                INSERT INTO project_items (project_id, item_id)
-                VALUES (:project_id, :item_id)
-                ON CONFLICT DO NOTHING
-                """
-            ),
-            {"project_id": project_id, "item_id": body.item_id},
-        )
+        try:
+            connection.execute(
+                insert(project_items_table).values(
+                    project_id=project_id,
+                    item_id=body.item_id,
+                    created_at=dt.datetime.now(dt.timezone.utc),
+                )
+            )
+        except IntegrityError:
+            pass
 
     return {}
 
@@ -113,14 +125,22 @@ def remove_item_from_project(
     engine = get_engine()
     with engine.begin() as connection:
         project = connection.execute(
-            text("SELECT 1 FROM projects WHERE id=:id AND owner_id=:owner_id"),
-            {"id": project_id, "owner_id": auth.user_id},
+            select(projects_table.c.id).where(
+                and_(
+                    projects_table.c.id == project_id,
+                    projects_table.c.owner_id == auth.user_id,
+                )
+            )
         ).first()
         if not project:
             raise HTTPException(status_code=404, detail="Project not found")
         connection.execute(
-            text("DELETE FROM project_items WHERE project_id=:project_id AND item_id=:item_id"),
-            {"project_id": project_id, "item_id": body.item_id},
+            delete(project_items_table).where(
+                and_(
+                    project_items_table.c.project_id == project_id,
+                    project_items_table.c.item_id == body.item_id,
+                )
+            )
         )
 
     return {}

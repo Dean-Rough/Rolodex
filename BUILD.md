@@ -7,8 +7,8 @@
 ## 1. Prerequisites
 - [x] macOS (Ventura+) or Linux (WSL2 OK)
 - [x] Node.js v20+ (`node -v`)
-- [x] Python 3.10+ (`python3 --version`)
-- [x] Supabase account & project
+- [x] Python 3.11+ (`python3 --version`)
+- [ ] Supabase project *(optional for storage uploads / hosted Postgres)*
 - [x] Chrome (for extension dev)
 - [x] Git, GitHub account, SSH keys
 
@@ -18,52 +18,54 @@
 - [ ] Fork repo on GitHub
 - [x] `git clone git@github.com:YOUR-USER/Rolodex.git`
 - [x] `cd Rolodex`
-- [x] `npm install` (in frontend/)
-- [x] `python3 -m venv venv && source venv/bin/activate` (in backend/)
+- [x] `npm install --prefix frontend`
+- [x] `python3 -m venv .venv && source .venv/bin/activate`
 - [x] `pip install -r backend/requirements.txt`
-- [x] Copy `.env.example` to `.env` (root) and fill in secrets
-- [x] Create `frontend/.env.local` with `NEXT_PUBLIC_API_BASE_URL=http://localhost:8000`
+- [ ] Copy `.env.example` to `.env` (only when wiring Supabase/OpenAI)
+- [x] Create `frontend/.env.local` with:
+  ```env
+  NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+  NEXT_PUBLIC_DEMO_TOKEN=demo-token-12345
+  ```
 
 ---
 
-## 3. Database & Auth (Supabase)
-- [x] Create a Supabase project at https://app.supabase.com
-- [x] Get your Project URL and anon/public API key
-- [x] Add these to your `.env` and `frontend/.env.local` as `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` (if using Supabase Auth)
-- [x] Open Supabase SQL editor and run the provided schema (see /docs/schema.sql)
-- [x] Set up Supabase Auth (email/password or social providers)
-- [ ] (Optional) Configure Row Level Security (RLS) and policies
+## 3. Database & Auth (optional)
+- [ ] Configure Supabase Postgres + Storage if deploying beyond local SQLite
+- [ ] Add Supabase keys to `.env` (`SUPABASE_PROJECT_URL`, `SUPABASE_SERVICE_ROLE_KEY`) and `frontend/.env.local` if using hosted auth
+- [ ] Apply schema via `docs/schema.sql` when targeting Postgres
+- [ ] Configure RLS/policies before production launch
+- [x] Skip for local exploration – SQLite + demo seed is automatic
 
 ---
 
 ## 4. Backend
-- [x] Update backend config to use Postgres connection string in `DATABASE_URL`
 - [x] `uvicorn backend.main:app --reload`
-- [x] Visit `http://localhost:8000/docs`
+- [x] Confirm logs mention `SQLite` and demo seeding (or set `ROLODEX_SEED_DEMO=0` to disable)
+- [x] Visit `http://localhost:8000/docs` and hit `/health`
 
 ---
 
 ## 5. Frontend
-- [x] `npm run dev` (in frontend/)
-- [x] Visit `http://localhost:3000`
-- [x] Confirm login screen loads
+- [x] `npm --prefix frontend run dev`
+- [x] Visit `http://localhost:3000` (library) and `http://localhost:3000/capture`
+- [x] Save a demo item via `/capture` (uses `NEXT_PUBLIC_DEMO_TOKEN`)
 
 ---
 
 ## 6. Browser Extension (v2)
 - [x] Chrome → Extensions → Load unpacked → select `extension/`
 - [x] Load `extension-v2.0.0/` (use v2 only; legacy `extension/` is dev-only)
-- [x] Right-click an image → “Save to Rolodex” appears
-- [x] If prompted to sign in, the extension opens the web app. Visit `/auth/extension?token=dev-token` for dev mode.
-- [x] Save image, check backend for new item
+- [x] Right-click an image → “Save to Rolodex” opens `/capture?image=…`
+- [x] Use the capture form to confirm the item lands in the library
 
 ---
 
 ## 7. Testing
-- [x] `npm run lint` (in frontend/)
-- [x] `npm run type-check` (in frontend/)
-- [x] `npm run test` (in frontend/)
-- [x] `npx playwright test` (UI) - ✅ *Setup complete, 6 tests passing*
+- [x] `pytest backend/tests`
+- [x] `npm run lint` (frontend)
+- [x] `npm run test` (frontend)
+- [ ] `npx playwright test` (UI) – optional for smoke
 
 ---
 
@@ -90,10 +92,10 @@
 
 **Summary**: Full development environment successfully set up with:
 - ✅ Frontend (Next.js + TypeScript + Tailwind)
-- ✅ Backend (FastAPI + Python)
-- ✅ Database (Supabase + PostgreSQL)  
+- ✅ Backend (FastAPI + Python + SQLite fallback)
+- ✅ Optional Supabase/Postgres integration ready
 - ✅ Browser Extension (Chrome)
-- ✅ Complete Testing Suite (Jest + Playwright)
+- ✅ Testing suite (pytest + Jest + Playwright)
 - ✅ Git workflow established
 - ✅ All code committed and pushed
 

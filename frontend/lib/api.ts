@@ -31,6 +31,19 @@ export interface ListItemsResponse {
   total?: number
 }
 
+export interface CreateItemPayload {
+  img_url: string
+  title?: string
+  vendor?: string
+  price?: number
+  currency?: string
+  description?: string
+  colour_hex?: string
+  category?: string
+  material?: string
+  src_url?: string
+}
+
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'
 
 class ApiError extends Error {
@@ -224,6 +237,16 @@ export const api = {
     return request<ApiItem>(`/api/items/${itemId}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
+  },
+
+  async createItem(token: string, payload: CreateItemPayload): Promise<ApiItem> {
+    const response = await request<ApiItem>(`/api/items`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: JSON.stringify(payload),
+    })
+    cache.clear()
+    return response
   },
 
   // Health check

@@ -2,25 +2,23 @@
 
 from __future__ import annotations
 
-import logging
 import hashlib
+import json
+import logging
 import uuid
 from io import BytesIO
 from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
 from PIL import Image
-from sqlalchemy import text
+from sqlalchemy import text, update
 from sqlalchemy.engine import Engine
-from sqlalchemy.exc import SQLAlchemyError
 
 try:  # pragma: no cover - optional dependency
     from supabase import Client, create_client
 except ImportError:  # pragma: no cover - optional dependency
     Client = Any  # type: ignore[misc, assignment]
-
-    def create_client(*args, **kwargs):  # type: ignore[override]
-        raise RuntimeError("Supabase client is not available. Install `supabase` to enable storage features.")
+    create_client = None  # type: ignore[assignment]
 
 try:  # pragma: no cover - optional dependency
     import openai
@@ -29,6 +27,7 @@ except ImportError as exc:  # pragma: no cover - optional dependency
 
 from backend.core.config import get_settings
 from backend.core.db import get_engine
+from backend.models import items_table
 
 
 logger = logging.getLogger(__name__)
@@ -49,20 +48,29 @@ class StorageService:
 
         self.supabase_url = supabase_url or settings.supabase_project_url
         self.supabase_key = supabase_key or settings.supabase_service_role_key
-
-        if not self.supabase_url or not self.supabase_key:
-            raise RuntimeError("Supabase credentials are required for storage operations")
-
-        self.supabase: Client = create_client(self.supabase_url, self.supabase_key)
-
         self.openai_api_key = openai_api_key or settings.openai_api_key
-        if not self.openai_api_key:
-            raise RuntimeError("OPENAI_API_KEY is required for embeddings")
-        if openai is None:
-            raise RuntimeError("openai package is required for embedding generation")
 
-        openai.api_key = self.openai_api_key
-        self.openai_client = openai.OpenAI(api_key=self.openai_api_key)
+        self.supabase: Optional[Client] = None
+        if self.supabase_url and self.supabase_key and create_client is not None:
+            try:
+                self.supabase = create_client(self.supabase_url, self.supabase_key)
+            except Exception as exc:  # pragma: no cover - network initialisation
+                logger.warning("Failed to initialise Supabase client: %s", exc)
+                self.supabase = None
+        elif self.supabase_url or self.supabase_key:
+            logger.warning("Supabase credentials provided but client library missing. Storage disabled.")
+
+        if self.openai_api_key and openai is not None:
+            try:  # pragma: no cover - optional dependency
+                openai.api_key = self.openai_api_key
+                self.openai_client = openai.OpenAI(api_key=self.openai_api_key)
+            except Exception as exc:
+                logger.warning("Failed to initialise OpenAI client: %s", exc)
+                self.openai_client = None
+        else:
+            if self.openai_api_key and openai is None:
+                logger.warning("OpenAI key supplied but `openai` package missing. Embeddings disabled.")
+            self.openai_client = None
 
         self.bucket_name = bucket_name
         self._engine = engine
@@ -152,45 +160,41 @@ class StorageService:
     
     async def store_image(self, url: str, user_id: str) -> str:
         """Download image from URL and store in Supabase Storage, return public URL"""
+        if self.supabase is None:
+            logger.debug("Supabase storage disabled; returning source URL for %s", url)
+            return url
+
         try:
-            # Download image
-            image_data, content_type = await self.download_image(url)
-            
-            # Generate file path
+            image_data, _content_type = await self.download_image(url)
             file_path = self._generate_file_path(url, user_id)
-            
-            # Upload to storage
             public_url = await self.upload_to_storage(image_data, file_path)
-            
-            logger.info(f"Successfully stored image: {url} -> {public_url}")
+            logger.info("Stored image %s for user %s", file_path, user_id)
             return public_url
-            
-        except Exception as e:
-            logger.error(f"Failed to store image {url}: {str(e)}")
-            # Return original URL as fallback
+        except Exception as exc:
+            logger.warning("Failed to store image %s: %s", url, exc)
             return url
     
     def generate_embedding(self, text: str) -> List[float]:
         """Generate vector embedding for text using OpenAI"""
+        if self.openai_client is None:
+            logger.debug("OpenAI client unavailable; skipping embedding generation")
+            return []
+
         try:
-            # Prepare text for embedding
             clean_text = text.strip()
             if not clean_text:
                 return []
-            
-            # Generate embedding using OpenAI (1536 dimensions)
+
             response = self.openai_client.embeddings.create(
                 model="text-embedding-3-small",
                 input=clean_text,
-                encoding_format="float"
+                encoding_format="float",
             )
-            
             embedding = response.data[0].embedding
-            logger.info(f"Generated embedding of dimension {len(embedding)} for text: {clean_text[:100]}...")
+            logger.info("Generated embedding of dimension %s", len(embedding))
             return embedding
-            
-        except Exception as e:
-            logger.error(f"Failed to generate embedding: {str(e)}")
+        except Exception as exc:  # pragma: no cover - network errors
+            logger.warning("Failed to generate embedding: %s", exc)
             return []
     
     def create_description_for_embedding(self, item_data: Dict[str, Any]) -> str:
@@ -223,99 +227,81 @@ class StorageService:
         
         return " | ".join(parts)
     
-    def search_by_embedding(self, query_embedding: List[float], user_id: str, 
-                          limit: int = 20, similarity_threshold: float = 0.7) -> List[Dict[str, Any]]:
-        """Search items using vector similarity"""
+    def search_by_embedding(
+        self,
+        query_embedding: List[float],
+        user_id: str,
+        limit: int = 20,
+        similarity_threshold: float = 0.7,
+    ) -> List[Dict[str, Any]]:
+        """Search items using vector similarity when pgvector is available."""
+
+        if not query_embedding:
+            return []
+
+        engine = self.engine
+        if engine.dialect.name != "postgresql":
+            logger.debug("Vector search skipped for dialect %s", engine.dialect.name)
+            return []
+
         try:
-            if not query_embedding:
-                return []
-            
-            # Convert embedding to string format for PostgreSQL
             embedding_str = f"[{','.join(map(str, query_embedding))}]"
-            
+
             sql = """
-                SELECT 
+                SELECT
                     id, img_url, title, vendor, price, currency, description,
                     colour_hex, category, material, created_at,
                     1 - (embedding <=> :query_embedding::vector) as similarity
-                FROM items 
-                WHERE owner_id = :owner_id 
+                FROM items
+                WHERE owner_id = :owner_id
                 AND embedding IS NOT NULL
                 AND 1 - (embedding <=> :query_embedding::vector) > :threshold
                 ORDER BY embedding <=> :query_embedding::vector
                 LIMIT :limit
             """
-            
+
             params = {
                 "query_embedding": embedding_str,
                 "owner_id": user_id,
                 "threshold": similarity_threshold,
-                "limit": limit
+                "limit": limit,
             }
-            
-            with self.engine.connect() as conn:
-                result = conn.execute(text(sql), params)
-                rows = result.mappings().all()
-            
-            # Format results
-            results = []
-            for row in rows:
-                item = dict(row)
-                item["created_at"] = item["created_at"].isoformat() if item["created_at"] else None
-                results.append(item)
-            
-            logger.info(f"Vector search returned {len(results)} results")
-            return results
-            
-        except Exception as e:
-            logger.error(f"Vector search failed: {str(e)}")
+
+            with engine.connect() as connection:
+                rows = connection.execute(text(sql), params).mappings().all()
+
+            return [
+                {**row, "created_at": row["created_at"].isoformat() if row.get("created_at") else None}
+                for row in rows
+            ]
+        except Exception as exc:  # pragma: no cover - requires pgvector
+            logger.warning("Vector search failed: %s", exc)
             return []
     
     async def semantic_search(self, query: str, user_id: str, limit: int = 20) -> List[Dict[str, Any]]:
         """Perform semantic search using query embedding"""
-        try:
-            # Generate embedding for search query
-            query_embedding = self.generate_embedding(query)
-            if not query_embedding:
-                logger.warning("Failed to generate query embedding, falling back to text search")
-                return []
-            
-            # Search using vector similarity
-            results = self.search_by_embedding(query_embedding, user_id, limit)
-            return results
-            
-        except Exception as e:
-            logger.error(f"Semantic search failed: {str(e)}")
+        query_embedding = self.generate_embedding(query)
+        if not query_embedding:
             return []
+
+        return self.search_by_embedding(query_embedding, user_id, limit)
     
     def store_item_embedding(self, item_id: str, embedding: List[float]) -> bool:
         """Store embedding vector for an item"""
+        if not embedding:
+            return False
+
         try:
-            if not embedding:
-                return False
-
-            embedding_str = f"[{','.join(map(str, embedding))}]"
-
-            sql = """
-                UPDATE items
-                SET embedding = :embedding::vector
-                WHERE id = :item_id
-            """
-
-            with self.engine.begin() as conn:
-                conn.execute(
-                    text(sql),
-                    {
-                        "embedding": embedding_str,
-                        "item_id": item_id,
-                    },
+            with self.engine.begin() as connection:
+                connection.execute(
+                    update(items_table)
+                    .where(items_table.c.id == item_id)
+                    .values(embedding=embedding)
                 )
-
-            logger.info(f"Stored embedding for item {item_id}")
+            logger.info("Stored embedding for item %s", item_id)
             return True
-
-        except Exception as e:
-            logger.error(f"Failed to store embedding for item {item_id}: {str(e)}")
+        except Exception as exc:  # pragma: no cover - db errors
+            logger.warning("Failed to store embedding for item %s: %s", item_id, exc)
             return False
 
 
@@ -341,3 +327,5 @@ def get_storage_service() -> StorageService:
 
 _storage_proxy = _StorageProxy()
 storage_service = _storage_proxy
+
+__all__ = ["StorageService", "get_storage_service", "storage_service"]

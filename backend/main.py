@@ -13,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from backend.api import api_router
+from backend.core.bootstrap import register_startup
 from backend.core.config import get_settings
 
 
@@ -88,6 +89,8 @@ def create_app() -> FastAPI:
             status_code=500,
             content={"error": {"code": "server_error", "message": "Internal server error"}},
         )
+
+    register_startup(app)
 
     app.include_router(api_router)
 

@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import datetime as dt
 import uuid
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, HttpUrl
-from sqlalchemy import text
+from sqlalchemy import and_, func, insert, or_, select
 from sqlalchemy.exc import SQLAlchemyError
 
 from backend.api.dependencies import (
@@ -18,6 +19,7 @@ from backend.api.dependencies import (
     rate_limit,
 )
 from backend.core.db import get_engine
+from backend.models import items_table
 from backend.storage import StorageService
 
 try:
@@ -76,6 +78,28 @@ class ExtractRequest(BaseModel):
     raw_text: Optional[str] = None  # Future text-only extraction support
 
 
+def _to_iso(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dt.datetime):
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=dt.timezone.utc)
+        return value.isoformat()
+    return str(value)
+
+
+def _parse_cursor(value: Optional[str]) -> Optional[dt.datetime]:
+    if not value:
+        return None
+    normalized = value.rstrip("Z") + ("+00:00" if value.endswith("Z") else "")
+    try:
+        return dt.datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+
+
 async def _generate_item_embedding(
     item_id: str,
     item_payload: Dict[str, Any],
@@ -116,32 +140,21 @@ async def create_item(
     try:
         with engine.begin() as connection:
             connection.execute(
-                text(
-                    """
-                    INSERT INTO items (
-                        id, owner_id, img_url, title, vendor, price, currency,
-                        description, colour_hex, category, material, src_url, created_at
-                    )
-                    VALUES (
-                        :id, :owner_id, :img_url, :title, :vendor, :price, :currency,
-                        :description, :colour_hex, :category, :material, :src_url, now()
-                    )
-                    """
-                ),
-                {
-                    "id": item_id,
-                    "owner_id": auth.user_id,
-                    "img_url": stored_img_url,
-                    "title": payload.title,
-                    "vendor": payload.vendor,
-                    "price": payload.price,
-                    "currency": payload.currency,
-                    "description": payload.description,
-                    "colour_hex": payload.colour_hex,
-                    "category": payload.category,
-                    "material": payload.material,
-                    "src_url": payload.src_url,
-                },
+                insert(items_table).values(
+                    id=item_id,
+                    owner_id=auth.user_id,
+                    img_url=stored_img_url,
+                    title=payload.title,
+                    vendor=payload.vendor,
+                    price=payload.price,
+                    currency=payload.currency,
+                    description=payload.description,
+                    colour_hex=payload.colour_hex,
+                    category=payload.category,
+                    material=payload.material,
+                    src_url=payload.src_url,
+                    created_at=dt.datetime.now(dt.timezone.utc),
+                )
             )
     except SQLAlchemyError as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -213,34 +226,47 @@ async def list_items(
                 search_type="semantic",
             )
 
-    params: Dict[str, Any] = {"owner_id": auth.user_id, "limit": limit}
-    where = ["owner_id = :owner_id"]
-
+    filters = [items_table.c.owner_id == auth.user_id]
     if query:
-        where.append("(title ILIKE :q OR vendor ILIKE :q OR description ILIKE :q OR category ILIKE :q)")
-        params["q"] = f"%{query}%"
+        pattern = f"%{query.lower()}%"
+        filters.append(
+            or_(
+                func.lower(items_table.c.title).like(pattern),
+                func.lower(items_table.c.vendor).like(pattern),
+                func.lower(items_table.c.description).like(pattern),
+                func.lower(items_table.c.category).like(pattern),
+            )
+        )
     if hex:
-        where.append("colour_hex ILIKE :hex")
-        params["hex"] = f"%{hex}%"
+        filters.append(func.lower(items_table.c.colour_hex).like(f"%{hex.lower()}%"))
     if price_max is not None:
-        where.append("price <= :price_max")
-        params["price_max"] = price_max
-    if cursor:
-        where.append("created_at < :cursor")
-        params["cursor"] = cursor
+        filters.append(items_table.c.price <= price_max)
+    cursor_dt = _parse_cursor(cursor)
+    if cursor_dt is not None:
+        filters.append(items_table.c.created_at < cursor_dt)
 
-    sql = f"""
-        SELECT id, img_url, title, vendor, price, currency, description,
-               colour_hex, category, material, created_at
-        FROM items
-        WHERE {' AND '.join(where)}
-        ORDER BY created_at DESC
-        LIMIT :limit
-    """
+    stmt = (
+        select(
+            items_table.c.id,
+            items_table.c.img_url,
+            items_table.c.title,
+            items_table.c.vendor,
+            items_table.c.price,
+            items_table.c.currency,
+            items_table.c.description,
+            items_table.c.colour_hex,
+            items_table.c.category,
+            items_table.c.material,
+            items_table.c.created_at,
+        )
+        .where(and_(*filters))
+        .order_by(items_table.c.created_at.desc())
+        .limit(limit)
+    )
 
     engine = get_engine()
     with engine.connect() as connection:
-        rows = connection.execute(text(sql), params).mappings().all()
+        rows = connection.execute(stmt).mappings().all()
 
     items = [
         ItemOut(
@@ -254,12 +280,12 @@ async def list_items(
             colour_hex=row.get("colour_hex"),
             category=row.get("category"),
             material=row.get("material"),
-            created_at=row["created_at"].isoformat() if row.get("created_at") else None,
+            created_at=_to_iso(row.get("created_at")),
         )
         for row in rows
     ]
 
-    next_cursor = rows[-1]["created_at"].isoformat() if rows else None
+    next_cursor = _to_iso(rows[-1]["created_at"]) if rows else None
 
     return ItemsResponse(items=items, nextCursor=next_cursor, search_type="text")
 
