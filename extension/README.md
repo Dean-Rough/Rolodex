@@ -1,29 +1,31 @@
 # Rolodex Capture Launcher (Manifest V3)
 
-This directory contains the lightweight Manifest V3 Chrome extension that launches the Rolodex capture workspace. The service worker only handles the context menu and deep-link generation while the full capture flow continues inside the web app.
+This directory houses the lightweight Manifest V3 Chrome extension that hands off rich capture flows to the Rolodex web app. The service worker collects page context, opens the `/capture` workspace with encoded query params, and shares capture/auth status with the popup UI—no Supabase tokens or API calls live in the extension.
 
 ## Key capabilities
 
-- Detects development/staging/production environments automatically (overrideable in the popup).
-- Adds a contextual "Capture in Rolodex" action for images.
-- Requests a short-lived capture URL from the API and opens `/capture` with signed JWT metadata.
-- Stores developer Supabase tokens in encrypted `chrome.storage.sync` rather than hard-coding them.
-- Provides a popup to manage tokens, overrides, and quick links to the capture workspace.
+- Detects development/staging/production environments automatically while allowing an override from the popup.
+- Registers both a context-menu action on images and the toolbar button to open `/capture` with image URL, source URL, title, and timestamp metadata.
+- Stores the last capture outcome in `chrome.storage.local` and surfaces it in the popup alongside any errors.
+- Polls the web app's `/auth/extension/status` endpoint (with graceful fallbacks) so the popup can indicate whether the user is signed in.
+- Ships a designer-grade popup with localisation scaffolding, focus management, and quick links to capture, library, and sign-in flows.
 
 ## Getting started
 
 1. `cd extension`
-2. Install tooling once: `npm install`
-3. Run lint checks: `npm run lint`
-4. Package the extension: `npm run package` (outputs to `dist/`)
-5. Load the directory as an unpacked extension in Chrome.
+2. Install tooling: `npm install`
+3. Run unit tests: `npm test`
+4. Lint the manifest/assets: `npm run lint`
+5. Package the extension: `npm run package` (outputs to `dist/`)
+6. Load the directory as an unpacked extension in Chrome.
 
-While developing, keep the popup open to paste a Supabase session token (copy from the web app via `supabase.auth.getSession()`). The badge will show `!` if the last capture failed—open the popup to read and clear the error.
+## Development notes
 
-## Environment overrides
-
-The popup defaults to auto-detection based on the build channel, but you can lock the extension to a specific environment (development, staging, production). Each environment maintains its own session token and optional expiry.
+- The background service worker (`background.js`) is an ES module. Chrome's MV3 runtime loads it directly—no bundler required.
+- Helper utilities live under `lib/` with accompanying `vitest` suites in `tests/`.
+- Status broadcasts flow through `chrome.runtime.sendMessage`. The popup listens for `rolodex:statusUpdated` to update UI without reopening.
+- Host permissions are limited to the Rolodex app domains because all heavy lifting happens server-side.
 
 ## Packaging automation
 
-The `npm run package` script zips the extension (excluding `dist/` and `node_modules/`) so it can be uploaded to the Chrome Web Store. Update `manifest.json`'s `version` and `version_name` before shipping.
+`npm run package` zips the extension (excluding `dist/` and `node_modules/`) so it can be uploaded to the Chrome Web Store. Update `manifest.json`'s `version` and `version_name` before shipping.

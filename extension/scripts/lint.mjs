@@ -35,7 +35,7 @@ try {
   }
 
   if (!Array.isArray(manifest.host_permissions) || manifest.host_permissions.length === 0) {
-    fail('host_permissions must include the API origin list used for deep links')
+    fail('host_permissions must include the web app origins used for capture/status flows')
   }
 
   if (!manifest.action?.default_popup) {

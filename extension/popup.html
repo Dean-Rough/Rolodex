@@ -5,7 +5,7 @@
     <title>Rolodex Capture</title>
     <style>
       :root {
-        color-scheme: dark light;
+        color-scheme: dark;
         font-family: 'Inter', 'SF Pro Display', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
       }
 
@@ -13,208 +13,217 @@
         margin: 0;
         min-width: 320px;
         max-width: 360px;
-        background: radial-gradient(circle at top left, #1f2937, #111827 70%);
-        color: #f9fafb;
+        background: radial-gradient(circle at 0% -20%, rgba(99, 102, 241, 0.42), rgba(15, 23, 42, 0.95)), #0f172a;
+        color: #f8fafc;
       }
 
       main {
         padding: 20px;
         display: flex;
         flex-direction: column;
-        gap: 18px;
+        gap: 16px;
       }
 
-      header {
+      .hero {
         display: flex;
+        align-items: flex-start;
         justify-content: space-between;
-        align-items: center;
+        gap: 12px;
       }
 
-      h1 {
-        margin: 0;
-        font-size: 18px;
+      .hero__text h1 {
+        margin: 4px 0 6px;
+        font-size: 20px;
         font-weight: 600;
-        letter-spacing: 0.02em;
+        letter-spacing: -0.01em;
+      }
+
+      .hero__text p {
+        margin: 0;
+        font-size: 12px;
+        color: rgba(226, 232, 240, 0.8);
+      }
+
+      .eyebrow {
+        text-transform: uppercase;
+        font-size: 11px;
+        letter-spacing: 0.14em;
+        color: rgba(165, 180, 252, 0.9);
+        margin: 0;
       }
 
       .badge {
-        background: rgba(148, 163, 184, 0.25);
-        border: 1px solid rgba(148, 163, 184, 0.4);
-        border-radius: 999px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
         padding: 4px 10px;
+        border-radius: 999px;
+        border: 1px solid rgba(148, 163, 184, 0.4);
+        background: rgba(15, 23, 42, 0.6);
         font-size: 11px;
         text-transform: uppercase;
         letter-spacing: 0.08em;
-        color: #e2e8f0;
+        color: rgba(224, 231, 255, 0.9);
       }
 
-      label {
-        display: block;
-        font-size: 12px;
-        font-weight: 500;
-        margin-bottom: 6px;
-        color: rgba(226, 232, 240, 0.85);
-      }
-
-      select,
-      input,
-      button {
-        width: 100%;
-        box-sizing: border-box;
-        font: inherit;
-      }
-
-      select,
-      input {
-        background: rgba(15, 23, 42, 0.85);
-        border: 1px solid rgba(148, 163, 184, 0.3);
-        border-radius: 10px;
-        padding: 10px 12px;
-        color: #f8fafc;
-        transition: border 0.2s ease;
-      }
-
-      select:focus,
-      input:focus {
-        outline: none;
-        border-color: rgba(165, 180, 252, 0.8);
-        box-shadow: 0 0 0 1px rgba(165, 180, 252, 0.4);
-      }
-
-      button {
-        border-radius: 10px;
-        border: none;
-        padding: 10px 14px;
-        margin-top: 8px;
-        font-size: 13px;
-        font-weight: 600;
-        cursor: pointer;
-        transition: transform 0.18s ease, box-shadow 0.18s ease;
-      }
-
-      button.primary {
-        background: linear-gradient(135deg, #6366f1, #8b5cf6);
-        color: #f8fafc;
-        box-shadow: 0 12px 30px rgba(99, 102, 241, 0.35);
-      }
-
-      button.secondary {
-        background: rgba(148, 163, 184, 0.15);
-        color: #e2e8f0;
-        border: 1px solid rgba(148, 163, 184, 0.25);
-      }
-
-      button.ghost {
-        background: transparent;
-        color: rgba(148, 163, 184, 0.85);
-        border: 1px solid rgba(148, 163, 184, 0.2);
-      }
-
-      button:hover {
-        transform: translateY(-1px);
-      }
-
-      section {
-        background: rgba(15, 23, 42, 0.72);
+      .panel {
+        background: rgba(15, 23, 42, 0.75);
         border: 1px solid rgba(148, 163, 184, 0.25);
         border-radius: 16px;
         padding: 16px;
         display: flex;
         flex-direction: column;
         gap: 12px;
-        box-shadow: 0 15px 40px rgba(15, 23, 42, 0.45);
+        box-shadow: 0 18px 34px rgba(15, 23, 42, 0.45);
+      }
+
+      .panel-title {
+        font-size: 13px;
+        font-weight: 600;
+        margin: 0;
+        color: rgba(224, 231, 255, 0.9);
+        letter-spacing: 0.02em;
+      }
+
+      .label {
+        font-size: 12px;
+        font-weight: 500;
+        color: rgba(224, 231, 255, 0.85);
+      }
+
+      .select-wrapper {
+        position: relative;
+      }
+
+      select {
+        width: 100%;
+        padding: 10px 36px 10px 12px;
+        background: rgba(30, 41, 59, 0.85);
+        color: #f8fafc;
+        border-radius: 12px;
+        border: 1px solid rgba(148, 163, 184, 0.3);
+        font: inherit;
+        appearance: none;
+      }
+
+      select:focus {
+        outline: none;
+        border-color: rgba(129, 140, 248, 0.9);
+        box-shadow: 0 0 0 1px rgba(129, 140, 248, 0.6);
+      }
+
+      .chevron {
+        position: absolute;
+        right: 12px;
+        top: 50%;
+        transform: translateY(-50%);
+        pointer-events: none;
+        color: rgba(148, 163, 184, 0.65);
+        font-size: 12px;
       }
 
       .hint {
-        font-size: 12px;
-        line-height: 1.4;
-        color: rgba(148, 163, 184, 0.85);
-        margin: 0;
-      }
-
-      .hint.small {
-        font-size: 11px;
-        color: rgba(148, 163, 184, 0.6);
-      }
-
-      .status {
         margin: 0;
         font-size: 12px;
-        line-height: 1.5;
-        color: rgba(148, 163, 184, 0.85);
+        color: rgba(148, 163, 184, 0.8);
       }
 
-      .status.success {
-        color: #a5b4fc;
-      }
-
-      .status.error {
-        color: #fbbf24;
-      }
-
-      code {
-        background: rgba(148, 163, 184, 0.12);
-        padding: 2px 6px;
-        border-radius: 6px;
-        font-size: 11px;
-      }
-
-      .button-row {
-        display: flex;
+      .actions {
         gap: 10px;
       }
 
-      .button-row button {
-        flex: 1;
-        margin-top: 0;
+      button {
+        width: 100%;
+        font: inherit;
+        border-radius: 12px;
+        padding: 12px 14px;
+        border: none;
+        cursor: pointer;
+        transition: transform 0.18s ease, box-shadow 0.18s ease;
+      }
+
+      button:focus-visible {
+        outline: 2px solid rgba(129, 140, 248, 0.8);
+        outline-offset: 2px;
+      }
+
+      .primary {
+        background: linear-gradient(135deg, #6366f1, #8b5cf6);
+        color: #f8fafc;
+        box-shadow: 0 16px 34px rgba(79, 70, 229, 0.35);
+      }
+
+      .primary:hover {
+        transform: translateY(-1px);
+      }
+
+      .secondary {
+        background: rgba(59, 130, 246, 0.12);
+        color: rgba(191, 219, 254, 0.95);
+        border: 1px solid rgba(59, 130, 246, 0.2);
+      }
+
+      .link {
+        background: transparent;
+        color: rgba(148, 163, 184, 0.9);
+        text-decoration: underline;
+        padding: 8px 0 0;
+      }
+
+      .status-line {
+        margin: 0;
+        font-size: 12px;
+        color: rgba(226, 232, 240, 0.85);
+      }
+
+      .status-line.subtle {
+        color: rgba(148, 163, 184, 0.75);
+        font-size: 11px;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        button {
+          transition: none;
+        }
       }
     </style>
   </head>
   <body>
     <main>
-      <header>
-        <h1>Rolodex</h1>
-        <span id="environment-badge" class="badge">Loading…</span>
+      <header class="hero">
+        <div class="hero__text">
+          <p class="eyebrow" data-i18n="eyebrow">Rolodex</p>
+          <h1 data-i18n="headline">Capture at designer speed</h1>
+          <p class="subhead" data-i18n="subhead">Right-click an image to launch the capture workspace.</p>
+        </div>
+        <span id="environmentBadge" class="badge" aria-live="polite">—</span>
       </header>
 
-      <section>
-        <div>
-          <label for="environment">Environment</label>
-          <select id="environment">
-            <option value="auto">Auto (detect)</option>
-            <option value="production">Production</option>
-            <option value="staging">Staging</option>
-            <option value="development">Development</option>
-          </select>
+      <section class="panel">
+        <label class="label" for="environment" data-i18n="environmentLabel">Environment</label>
+        <div class="select-wrapper">
+          <select id="environment" data-role="environment-select"></select>
+          <span class="chevron" aria-hidden="true">⌄</span>
         </div>
-        <p id="environment-hint" class="hint">Detecting…</p>
+        <p class="hint" id="environmentHint">Detecting…</p>
       </section>
 
-      <section>
-        <div>
-          <label for="token">Session token</label>
-          <input id="token" type="password" placeholder="Paste Supabase JWT" autocomplete="off" />
-        </div>
-        <div>
-          <label for="expires">Token expiry (optional)</label>
-          <input id="expires" type="datetime-local" />
-        </div>
-        <p class="hint">Tokens expire automatically on the date you set. Refresh after updating your Rolodex session.</p>
-        <div class="button-row">
-          <button id="save" class="primary">Save settings</button>
-          <button id="clear" class="secondary">Clear</button>
-        </div>
+      <section class="panel actions">
+        <button class="primary" id="launchCapture" data-role="launch" data-i18n="launchCapture">Launch capture workspace</button>
+        <button class="secondary" id="openLibrary" data-role="library" data-i18n="openLibrary">Open my library</button>
+        <button class="link" id="openSignIn" data-role="signin" data-i18n="signIn">Sign in</button>
       </section>
 
-      <section>
-        <button id="open-capture" class="ghost">Open capture workspace</button>
-        <p class="hint small">
-          Need a token? Sign in to the web app, open DevTools, run
-          <code>await supabase.auth.getSession()</code>, and copy the <code>access_token</code>.
-        </p>
+      <section class="panel status" aria-live="polite" id="authPanel">
+        <h2 class="panel-title" data-i18n="statusHeading">Account status</h2>
+        <p class="status-line" id="authMessage">Checking your Rolodex session…</p>
       </section>
 
-      <p id="status" class="status">Loading extension status…</p>
+      <section class="panel status" aria-live="polite" id="capturePanel">
+        <h2 class="panel-title" data-i18n="lastCaptureHeading">Last capture</h2>
+        <p class="status-line" id="captureStatus">No captures yet. Try saving an inspiration shot.</p>
+        <p class="status-line subtle" id="captureTimestamp"></p>
+      </section>
     </main>
 
     <script type="module" src="popup.js"></script>

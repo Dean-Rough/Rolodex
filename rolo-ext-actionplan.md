@@ -38,8 +38,8 @@
 ## Deliverables checklist
 - [ ] Unified `extension/` codebase with TypeScript build system
 - [ ] Hardened MV3 manifest & CSP
-- [ ] Lightweight capture trigger + popup status UI
-- [ ] Automated tests, linting, and packaging pipeline
+- [x] Lightweight capture trigger + popup status UI
+- [x] Automated tests, linting, and packaging pipeline
 - [ ] Chrome Web Store-ready assets, docs, and release playbook
 
 ## Risks & mitigations

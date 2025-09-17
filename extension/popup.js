@@ -1,155 +1,250 @@
-const STORAGE_KEY = 'rolodexSettings'
-const ERROR_KEY = 'rolodexLastError'
+import { environmentOptions } from './lib/environment.js'
 
-const ENVIRONMENTS = {
-  production: {
-    key: 'production',
-    label: 'Production',
-    appBaseUrl: 'https://app.rolodex.app',
-    apiBaseUrl: 'https://api.rolodex.app'
-  },
-  staging: {
-    key: 'staging',
-    label: 'Staging',
-    appBaseUrl: 'https://staging.rolodex.app',
-    apiBaseUrl: 'https://staging.api.rolodex.app'
-  },
-  development: {
-    key: 'development',
-    label: 'Development',
-    appBaseUrl: 'http://localhost:3000',
-    apiBaseUrl: 'http://localhost:8000'
+const messages = {
+  en: {
+    eyebrow: 'Rolodex',
+    headline: 'Capture at designer speed',
+    subhead: 'Right-click an image to launch the capture workspace.',
+    environmentLabel: 'Environment',
+    environmentAuto: 'Auto ({{label}})',
+    launchCapture: 'Launch capture workspace',
+    openLibrary: 'Open my library',
+    signIn: 'Sign in',
+    signInCtaAuthenticated: 'Manage account',
+    statusHeading: 'Account status',
+    statusChecking: 'Checking your Rolodex session…',
+    statusAuthenticated: 'Signed in and ready to capture.',
+    statusAuthenticatedWithName: 'Signed in as {{name}}.',
+    statusUnauthenticated: 'Not signed in. Launch the sign-in flow to continue.',
+    statusError: 'Unable to confirm your session. Try again shortly.',
+    statusUnknown: 'Session unknown. The status endpoint is unreachable.',
+    lastCaptureHeading: 'Last capture',
+    lastCaptureNone: 'No captures yet. Try saving an inspiration shot.',
+    lastCaptureLaunched: 'Capture workspace opened in a new tab.',
+    lastCaptureOpened: 'Capture workspace opened from the toolbar.',
+    lastCaptureError: '{{message}}',
+    timestampPrefix: 'Updated {{time}}'
   }
 }
 
-const manifest = chrome.runtime.getManifest()
-const detectedEnvironment = detectDefaultEnvironment(manifest)
+const locale = (navigator.language || 'en').split('-')[0]
+const language = messages[locale] ? locale : 'en'
 
-const environmentSelect = document.getElementById('environment')
-const tokenInput = document.getElementById('token')
-const expiryInput = document.getElementById('expires')
-const statusEl = document.getElementById('status')
-const hintEl = document.getElementById('environment-hint')
-const environmentBadge = document.getElementById('environment-badge')
-const saveButton = document.getElementById('save')
-const clearButton = document.getElementById('clear')
-const openButton = document.getElementById('open-capture')
+function t(key, vars = {}) {
+  const template = messages[language][key]
+  if (!template) return key
+  return template.replace(/{{(.*?)}}/g, (_, token) => {
+    const value = vars[token.trim()]
+    return typeof value === 'undefined' ? '' : String(value)
+  })
+}
 
-let currentEnvironmentKey = detectedEnvironment
+const elements = {
+  environmentSelect: document.querySelector('[data-role="environment-select"]'),
+  environmentBadge: document.getElementById('environmentBadge'),
+  environmentHint: document.getElementById('environmentHint'),
+  launchButton: document.getElementById('launchCapture'),
+  libraryButton: document.getElementById('openLibrary'),
+  signInButton: document.getElementById('openSignIn'),
+  authMessage: document.getElementById('authMessage'),
+  captureStatus: document.getElementById('captureStatus'),
+  captureTimestamp: document.getElementById('captureTimestamp'),
+  authPanel: document.getElementById('authPanel'),
+  capturePanel: document.getElementById('capturePanel'),
+  root: document.querySelector('main')
+}
+
 
 init()
 
 async function init() {
-  environmentSelect.addEventListener('change', () => {
-    currentEnvironmentKey = environmentSelect.value === 'auto' ? detectedEnvironment : environmentSelect.value
-    renderEnvironment()
-  })
+  applyTranslations()
+  initFocusTrap()
+  bindEventHandlers()
 
-  saveButton.addEventListener('click', async event => {
-    event.preventDefault()
-    await persistSettings()
-  })
-
-  clearButton.addEventListener('click', async event => {
-    event.preventDefault()
-    tokenInput.value = ''
-    expiryInput.value = ''
-    await persistSettings()
-  })
-
-  openButton.addEventListener('click', async event => {
-    event.preventDefault()
-    const env = ENVIRONMENTS[currentEnvironmentKey]
-    await chrome.tabs.create({ url: env.appBaseUrl })
-  })
-
-  await renderEnvironment()
-}
-
-async function renderEnvironment() {
-  const { [STORAGE_KEY]: settings = {}, [ERROR_KEY]: lastError = null } = await chrome.storage.sync.get([STORAGE_KEY, ERROR_KEY])
-  const override = settings.environmentOverride || null
-  if (override) {
-    environmentSelect.value = override
-    currentEnvironmentKey = override
-  } else {
-    environmentSelect.value = 'auto'
-    currentEnvironmentKey = detectedEnvironment
+  const status = await requestStatus()
+  if (status) {
+    renderStatus(status)
   }
 
-  const env = ENVIRONMENTS[currentEnvironmentKey]
-  hintEl.textContent = `${env.label} • ${env.appBaseUrl.replace(/^https?:\/\//, '')}`
-  environmentBadge.textContent = override ? `${env.label} mode` : `${env.label} (auto)`
+  elements.launchButton?.focus()
 
-  const tokens = settings.tokens || {}
-  const session = tokens[currentEnvironmentKey] || {}
-  tokenInput.value = session.token || ''
-  expiryInput.value = session.expiresAt ? toInputValue(session.expiresAt) : ''
-
-  if (lastError?.message) {
-    statusEl.textContent = `Last capture error: ${lastError.message}`
-    statusEl.className = 'status error'
-  } else {
-    statusEl.textContent = 'Right-click an image to launch the capture workspace.'
-    statusEl.className = 'status'
-  }
-}
-
-async function persistSettings() {
-  const override = environmentSelect.value === 'auto' ? null : environmentSelect.value
-  const key = override || detectedEnvironment
-  const token = tokenInput.value.trim()
-  const expiresValue = expiryInput.value
-  const expiresAt = expiresValue ? new Date(expiresValue).toISOString() : undefined
-
-  const stored = await chrome.storage.sync.get(STORAGE_KEY)
-  const settings = stored?.[STORAGE_KEY] || {}
-  const tokens = { ...(settings.tokens || {}) }
-
-  if (token) {
-    tokens[key] = { token, expiresAt }
-  } else {
-    delete tokens[key]
-  }
-
-  await chrome.storage.sync.set({
-    [STORAGE_KEY]: {
-      ...settings,
-      environmentOverride: override,
-      tokens
+  chrome.runtime.onMessage.addListener(message => {
+    if (message?.type === 'rolodex:statusUpdated' && message.payload) {
+      renderStatus(message.payload)
     }
   })
-
-  await chrome.action.setBadgeText({ text: '' })
-  await chrome.storage.sync.remove(ERROR_KEY)
-
-  statusEl.textContent = token ? 'Settings saved. Ready to capture.' : 'Token cleared. Add a token to capture items.'
-  statusEl.className = token ? 'status success' : 'status'
 }
 
-function detectDefaultEnvironment(manifest) {
-  const versionName = (manifest.version_name || '').toLowerCase()
-  if (!manifest.update_url || versionName.includes('dev')) {
-    return 'development'
-  }
-  if (versionName.includes('staging')) {
-    return 'staging'
-  }
-  return 'production'
+function applyTranslations() {
+  document.querySelectorAll('[data-i18n]').forEach(node => {
+    const key = node.getAttribute('data-i18n')
+    const translated = t(key)
+    if (translated) {
+      node.textContent = translated
+    }
+  })
 }
 
-function toInputValue(isoString) {
+function bindEventHandlers() {
+  elements.environmentSelect?.addEventListener('change', async event => {
+    const value = event.target.value
+    const environmentKey = value === 'auto' ? null : value
+    await sendMessage('rolodex:setEnvironment', { environmentKey })
+  })
+
+  elements.launchButton?.addEventListener('click', () => {
+    sendMessage('rolodex:openCapture')
+  })
+
+  elements.libraryButton?.addEventListener('click', () => {
+    sendMessage('rolodex:openCapture', { destination: 'library' })
+  })
+
+  elements.signInButton?.addEventListener('click', () => {
+    sendMessage('rolodex:openCapture', { destination: 'auth' })
+  })
+}
+
+function initFocusTrap() {
+  if (!elements.root) return
+  const focusableSelectors = 'button, [href], select, [tabindex]:not([tabindex="-1"])'
+  const focusable = Array.from(elements.root.querySelectorAll(focusableSelectors))
+    .filter(node => !node.hasAttribute('disabled'))
+
+  elements.root.addEventListener('keydown', event => {
+    if (event.key !== 'Tab' || focusable.length === 0) {
+      return
+    }
+
+    const first = focusable[0]
+    const last = focusable[focusable.length - 1]
+
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault()
+      last.focus()
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault()
+      first.focus()
+    }
+  })
+}
+
+async function requestStatus() {
+  return sendMessage('rolodex:getStatus')
+}
+
+function renderStatus(status) {
+  renderEnvironment(status.environment, status.environmentOptions)
+  renderAuth(status.auth)
+  renderCapture(status.lastCapture)
+}
+
+function renderEnvironment(environment, options = environmentOptions()) {
+  if (!elements.environmentSelect) {
+    return
+  }
+
+  elements.environmentSelect.innerHTML = ''
+
+  const autoOption = document.createElement('option')
+  autoOption.value = 'auto'
+  autoOption.textContent = t('environmentAuto', { label: environment.label })
+  elements.environmentSelect.appendChild(autoOption)
+
+  options.forEach(option => {
+    const optionNode = document.createElement('option')
+    optionNode.value = option.key
+    optionNode.textContent = option.label
+    elements.environmentSelect.appendChild(optionNode)
+  })
+
+  elements.environmentSelect.value = environment.isOverride ? environment.key : 'auto'
+  elements.environmentBadge.textContent = environment.isOverride
+    ? `${environment.label} mode`
+    : `${environment.label} • auto`
+
   try {
-    const date = new Date(isoString)
-    if (Number.isNaN(date.getTime())) return ''
-    const year = date.getFullYear()
-    const month = String(date.getMonth() + 1).padStart(2, '0')
-    const day = String(date.getDate()).padStart(2, '0')
-    const hours = String(date.getHours()).padStart(2, '0')
-    const minutes = String(date.getMinutes()).padStart(2, '0')
-    return `${year}-${month}-${day}T${hours}:${minutes}`
+    const host = new URL(environment.appBaseUrl).host
+    elements.environmentHint.textContent = `${environment.label} • ${host}`
   } catch (error) {
-    console.warn('Rolodex: failed to parse expiry', error)
+    elements.environmentHint.textContent = environment.appBaseUrl
+  }
+}
+
+function renderAuth(auth) {
+  if (!auth) {
+    elements.authMessage.textContent = t('statusChecking')
+    elements.signInButton.textContent = t('signIn')
+    return
+  }
+
+  if (auth.state === 'authenticated') {
+    elements.authMessage.textContent = auth.profile?.name
+      ? t('statusAuthenticatedWithName', { name: auth.profile.name })
+      : t('statusAuthenticated')
+    elements.signInButton.textContent = t('signInCtaAuthenticated')
+  } else if (auth.state === 'unauthenticated') {
+    elements.authMessage.textContent = t('statusUnauthenticated')
+    elements.signInButton.textContent = t('signIn')
+  } else if (auth.state === 'error') {
+    elements.authMessage.textContent = t('statusError')
+    elements.signInButton.textContent = t('signIn')
+  } else {
+    elements.authMessage.textContent = t('statusUnknown')
+    elements.signInButton.textContent = t('signIn')
+  }
+}
+
+function renderCapture(lastCapture) {
+  if (!lastCapture) {
+    elements.captureStatus.textContent = t('lastCaptureNone')
+    elements.captureTimestamp.textContent = ''
+    return
+  }
+
+  if (lastCapture.status === 'launched') {
+    elements.captureStatus.textContent = t('lastCaptureLaunched')
+  } else if (lastCapture.status === 'opened') {
+    elements.captureStatus.textContent = t('lastCaptureOpened')
+  } else if (lastCapture.status === 'error') {
+    elements.captureStatus.textContent = t('lastCaptureError', {
+      message: lastCapture.message || 'Capture failed'
+    })
+  } else {
+    elements.captureStatus.textContent = t('lastCaptureNone')
+  }
+
+  const stamp = lastCapture.timestamp || lastCapture.updatedAt
+  elements.captureTimestamp.textContent = stamp ? t('timestampPrefix', { time: formatTimestamp(stamp) }) : ''
+}
+
+function formatTimestamp(value) {
+  try {
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) {
+      return ''
+    }
+    return new Intl.DateTimeFormat(language === 'en' ? 'en-GB' : language, {
+      hour: '2-digit',
+      minute: '2-digit',
+      day: 'numeric',
+      month: 'short'
+    }).format(date)
+  } catch (error) {
     return ''
   }
+}
+
+function sendMessage(type, payload = {}) {
+  return new Promise(resolve => {
+    chrome.runtime.sendMessage({ type, ...payload }, response => {
+      if (chrome.runtime.lastError) {
+        console.warn('Rolodex extension: message failed', chrome.runtime.lastError)
+        resolve({ ok: false, error: chrome.runtime.lastError.message })
+        return
+      }
+      resolve(response)
+    })
+  })
 }

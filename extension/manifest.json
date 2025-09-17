@@ -4,18 +4,19 @@
   "short_name": "Rolodex",
   "version": "0.3.0",
   "version_name": "dev",
-  "description": "Trigger the Rolodex capture workspace with a right-click.",
+  "description": "Launch the Rolodex capture workspace from any image.",
   "permissions": ["contextMenus", "storage", "tabs"],
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "background.js",
+    "type": "module"
   },
   "action": {
     "default_popup": "popup.html",
     "default_title": "Rolodex Capture"
   },
   "host_permissions": [
-    "http://localhost:8000/*",
-    "https://api.rolodex.app/*",
-    "https://staging.api.rolodex.app/*"
+    "https://app.rolodex.app/*",
+    "https://staging.rolodex.app/*",
+    "http://localhost:3000/*"
   ]
 }
