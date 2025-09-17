@@ -30,6 +30,7 @@
 ## 6. Secrets & Env
 - Never commit secrets. `.env` and `frontend/.env.local` remain gitignored.
 - Backend: `DATABASE_URL` is optional – defaults to `sqlite:///./var/rolodex.db`. Set `ROLODEX_SEED_DEMO=0` to disable demo data.
+- Capture deep links: configure `ROLODEX_CAPTURE_BASE_URL`, `ROLODEX_CAPTURE_STAGING_BASE_URL`, and `ROLODEX_CAPTURE_DEVELOPMENT_BASE_URL` if the default app domains differ in your environment. These feed the extension deep-link endpoint.
 - Frontend: configure `NEXT_PUBLIC_API_BASE_URL` and `NEXT_PUBLIC_DEMO_TOKEN` for local dev. Real auth providers can be wired later.
 - Optional services: `OPENAI_API_KEY` (embeddings), `SUPABASE_PROJECT_URL`/`SUPABASE_SERVICE_ROLE_KEY` (storage uploads).
 

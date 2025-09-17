@@ -1,18 +1,21 @@
 {
   "manifest_version": 3,
-  "name": "Rolodex Image Saver",
-  "version": "0.1.0",
-  "description": "Right-click to save product images to Rolodex.",
-  "permissions": ["contextMenus", "storage"],
+  "name": "Rolodex Capture Launcher",
+  "short_name": "Rolodex",
+  "version": "0.3.0",
+  "version_name": "dev",
+  "description": "Trigger the Rolodex capture workspace with a right-click.",
+  "permissions": ["contextMenus", "storage", "tabs"],
   "background": {
     "service_worker": "background.js"
   },
   "action": {
-    "default_popup": "popup.html"
+    "default_popup": "popup.html",
+    "default_title": "Rolodex Capture"
   },
-  "icons": {
-    "16": "icon16.png",
-    "48": "icon48.png",
-    "128": "icon128.png"
-  }
-} 
+  "host_permissions": [
+    "http://localhost:8000/*",
+    "https://api.rolodex.app/*",
+    "https://staging.api.rolodex.app/*"
+  ]
+}

@@ -40,6 +40,18 @@ class Settings(BaseModel):
         default=None,
         description="Fallback JWT secret for local development.",
     )
+    capture_base_url: str = Field(
+        default="https://app.rolodex.app",
+        description="Base URL for the capture workspace in production.",
+    )
+    capture_staging_base_url: str | None = Field(
+        default="https://staging.rolodex.app",
+        description="Base URL for the capture workspace in staging environments.",
+    )
+    capture_development_base_url: str = Field(
+        default="http://localhost:3000",
+        description="Base URL for the capture workspace when running locally.",
+    )
     cors_allow_origins: Tuple[str, ...] = Field(
         default=(
             "http://localhost:3000",
@@ -56,6 +68,17 @@ class Settings(BaseModel):
         """Return a mutable list of allowed origins for middleware configuration."""
 
         return list(self.cors_allow_origins)
+
+    def resolve_capture_base(self, environment: str | None = None) -> str:
+        """Resolve the base URL used for capture deep links for the given environment."""
+
+        env = (environment or "production").lower()
+        if env == "development":
+            return self.capture_development_base_url.rstrip("/")
+        if env == "staging":
+            base = self.capture_staging_base_url or self.capture_base_url
+            return base.rstrip("/")
+        return self.capture_base_url.rstrip("/")
 
 
 @lru_cache()
@@ -78,4 +101,11 @@ def get_settings() -> Settings:
         supabase_jwt_secret=os.getenv("SUPABASE_JWT_SECRET"),
         jwt_secret=os.getenv("JWT_SECRET"),
         cors_allow_origins=origins,
+        capture_base_url=os.getenv("ROLODEX_CAPTURE_BASE_URL", Settings().capture_base_url),
+        capture_staging_base_url=os.getenv("ROLODEX_CAPTURE_STAGING_BASE_URL")
+        or Settings().capture_staging_base_url,
+        capture_development_base_url=os.getenv(
+            "ROLODEX_CAPTURE_DEVELOPMENT_BASE_URL",
+            Settings().capture_development_base_url,
+        ),
     )

@@ -1,0 +1,132 @@
+import os
+import pathlib
+import sys
+from datetime import datetime, timedelta, timezone
+from typing import Dict
+
+import httpx
+import jwt
+import pytest
+
+ROOT = pathlib.Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from backend.api.dependencies import get_storage_dependency  # noqa: E402
+from backend.core.config import get_settings  # noqa: E402
+from backend.core.db import get_engine  # noqa: E402
+from backend.main import create_app  # noqa: E402
+from backend.storage import _StorageProxy  # type: ignore[attr-defined]  # noqa: E402
+
+
+class DummyStorage:
+    async def store_image(self, url: str, user_id: str) -> str:
+        return url
+
+    def create_description_for_embedding(self, payload: Dict[str, str]) -> str:
+        return payload.get("title", "")
+
+    def generate_embedding(self, text: str):
+        return []
+
+    def store_item_embedding(self, item_id: str, embedding):
+        return False
+
+    async def semantic_search(self, query: str, user_id: str, limit: int = 20):
+        return []
+
+
+@pytest.fixture()
+async def app(tmp_path):
+    os.environ["DATABASE_URL"] = f"sqlite:///{tmp_path / 'rolodex-extension.db'}"
+    os.environ["ROLODEX_SEED_DEMO"] = "0"
+    os.environ["JWT_SECRET"] = "super-secret"
+    os.environ["ROLODEX_CAPTURE_BASE_URL"] = "https://app.example.com"
+    os.environ["ROLODEX_CAPTURE_STAGING_BASE_URL"] = "https://staging.example.com"
+    os.environ["ROLODEX_CAPTURE_DEVELOPMENT_BASE_URL"] = "http://localhost:3000"
+
+    get_settings.cache_clear()
+    get_engine.cache_clear()
+
+    from backend import storage as storage_module  # noqa: E402
+
+    if isinstance(storage_module._storage_proxy, _StorageProxy):  # type: ignore[attr-defined]
+        storage_module._storage_proxy._instance = None  # type: ignore[attr-defined]
+
+    application = create_app()
+    application.dependency_overrides[get_storage_dependency] = lambda: DummyStorage()
+
+    await application.router.startup()
+    yield application
+    await application.router.shutdown()
+
+
+@pytest.fixture()
+async def client(app):
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as async_client:
+        yield async_client
+
+
+@pytest.fixture()
+def anyio_backend():
+    return "asyncio"
+
+
+def _make_token(sub: str) -> str:
+    secret = os.environ["JWT_SECRET"]
+    return jwt.encode({"sub": sub}, secret, algorithm="HS256")
+
+
+@pytest.mark.anyio
+async def test_create_deeplink(client):
+    token = _make_token("user-123")
+    payload = {
+        "image": "https://cdn.example.com/image.jpg",
+        "source": "https://retailer.example.com/products/1",
+        "title": "Acrylic Bar Stool",
+        "environment": "staging",
+    }
+
+    response = await client.post(
+        "/api/extension/deeplink",
+        json=payload,
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["capture_url"].startswith("https://staging.example.com/capture?")
+
+    token_param = httpx.URL(data["capture_url"]).params.get("token")
+    assert token_param
+    parsed_token = jwt.decode(
+        token_param,
+        os.environ["JWT_SECRET"],
+        algorithms=["HS256"],
+        options={"verify_aud": False},
+    )
+
+    assert parsed_token["sub"].endswith("user-1230000")
+    assert parsed_token["image"] == payload["image"]
+    assert parsed_token["source"] == payload["source"]
+    assert parsed_token["title"] == payload["title"]
+
+    expires_at = datetime.fromisoformat(data["expires_at"].replace("Z", "+00:00"))
+    assert expires_at - datetime.now(timezone.utc) <= timedelta(minutes=5, seconds=5)
+
+
+@pytest.mark.anyio
+async def test_missing_secret_returns_error(client):
+    os.environ.pop("JWT_SECRET", None)
+    get_settings.cache_clear()
+
+    response = await client.post(
+        "/api/extension/deeplink",
+        json={"image": "https://cdn.example.com/img.jpg"},
+        headers={"Authorization": "Bearer temporary"},
+    )
+
+    assert response.status_code == 500
+    data = response.json()
+    assert data.get("error", {}).get("message") == "JWT signing secret not configured"

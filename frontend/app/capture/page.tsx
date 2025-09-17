@@ -1,6 +1,6 @@
 'use client'
 
-import { ChangeEvent, FormEvent, useMemo, useState } from 'react'
+import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { useSearchParams } from 'next/navigation'
@@ -8,7 +8,8 @@ import { AlertCircle, ArrowLeft, CheckCircle, Loader2, Sparkles } from 'lucide-r
 
 import { api } from '../../lib/api'
 
-const DEMO_TOKEN = process.env.NEXT_PUBLIC_DEMO_TOKEN || 'demo-token-12345'
+const FALLBACK_TOKEN = process.env.NEXT_PUBLIC_DEMO_TOKEN || 'demo-token-12345'
+const CAPTURE_TOKEN_KEY = 'rolodex_capture_token'
 
 type CaptureFormState = {
   img_url: string
@@ -58,6 +59,37 @@ export default function CapturePage() {
   const [status, setStatus] = useState<SubmitState>('idle')
   const [error, setError] = useState<string | null>(null)
   const [createdId, setCreatedId] = useState<string | null>(null)
+  const [captureToken, setCaptureToken] = useState<string | null>(null)
+  const usingFallbackToken = captureToken === FALLBACK_TOKEN && Boolean(FALLBACK_TOKEN)
+
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search)
+      const urlToken = params.get('token')
+
+      if (urlToken) {
+        sessionStorage.setItem(CAPTURE_TOKEN_KEY, urlToken)
+        setCaptureToken(urlToken)
+        return
+      }
+
+      const stored =
+        sessionStorage.getItem(CAPTURE_TOKEN_KEY) ||
+        localStorage.getItem('rolodex_dev_token') ||
+        null
+
+      if (stored) {
+        setCaptureToken(stored)
+      } else if (FALLBACK_TOKEN) {
+        setCaptureToken(FALLBACK_TOKEN)
+      } else {
+        setCaptureToken(null)
+      }
+    } catch (tokenError) {
+      console.warn('Unable to access capture token storage', tokenError)
+      setCaptureToken(FALLBACK_TOKEN || null)
+    }
+  }, [])
 
   const handleChange = (field: keyof CaptureFormState) => (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setForm(prev => ({ ...prev, [field]: event.target.value }))
@@ -81,8 +113,14 @@ export default function CapturePage() {
       src_url: form.src_url || undefined,
     }
 
+    if (!captureToken) {
+      setError('Missing capture token. Launch this page from the extension or sign in again.')
+      setStatus('error')
+      return
+    }
+
     try {
-      const created = await api.createItem(DEMO_TOKEN, payload)
+      const created = await api.createItem(captureToken, payload)
       setCreatedId(created.id)
       setStatus('success')
     } catch (err) {
@@ -92,7 +130,7 @@ export default function CapturePage() {
     }
   }
 
-  const canSubmit = form.img_url.trim().length > 0 && status !== 'saving'
+  const canSubmit = form.img_url.trim().length > 0 && status !== 'saving' && Boolean(captureToken)
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -134,7 +172,8 @@ export default function CapturePage() {
             <h2 className="mb-2 text-lg font-semibold text-slate-900">How this works</h2>
             <p className="text-sm text-slate-600">
               The Chrome extension passes the page context into this workspace. Double-check the AI suggestion, tweak the details,
-              and press save to add the item to your library. Everything runs through FastAPI using the demo token {DEMO_TOKEN}.
+              and press save to add the item to your library. Tokens last a few minutes for security—refresh if your session
+              expires.
             </p>
             <ul className="mt-4 space-y-2 text-sm text-slate-600">
               <li>• Paste a product image URL or use the extension to launch this screen.</li>
@@ -266,7 +305,17 @@ export default function CapturePage() {
 
             <div className="flex items-center justify-between">
               <div className="text-sm text-slate-500">
-                Signed in with demo token <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">{DEMO_TOKEN}</code>
+                {captureToken ? (
+                  usingFallbackToken ? (
+                    <span>
+                      Using the demo token for local development. Launch from the extension for secure captures.
+                    </span>
+                  ) : (
+                    <span>Secure capture token detected. You are ready to save items.</span>
+                  )
+                ) : (
+                  <span>No capture token detected. Open this workspace from the extension after signing in.</span>
+                )}
               </div>
               <button
                 type="submit"

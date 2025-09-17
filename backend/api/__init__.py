@@ -2,12 +2,13 @@
 
 from fastapi import APIRouter
 
-from . import health, items, projects
+from . import extension, health, items, projects
 
 
 api_router = APIRouter()
 api_router.include_router(health.router)
 api_router.include_router(items.router)
 api_router.include_router(projects.router)
+api_router.include_router(extension.router)
 
 __all__ = ["api_router"]
