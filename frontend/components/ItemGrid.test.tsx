@@ -4,25 +4,41 @@ import { render, screen } from '@testing-library/react'
 import '@testing-library/jest-dom'
 import ItemGrid, { Item } from './ItemGrid'
 
-type ImageProps = ComponentProps<'img'>
+type ImageProps = ComponentProps<'img'> & { fill?: boolean; src?: string }
 
-// Mock Next.js Image component
 jest.mock('next/image', () => {
-  return function Image({ src, alt, ...props }: ImageProps) {
-    // eslint-disable-next-line @next/next/no-img-element
-    return <img src={src as string} alt={alt ?? ''} {...props} />
+  return {
+    __esModule: true,
+    default: (input: ImageProps) => {
+      const { src, alt = '', fill, ...rest } = input
+      void fill
+      const resolvedSrc = typeof src === 'string' ? src : 'mock-image-src'
+      // eslint-disable-next-line @next/next/no-img-element
+      return <img src={resolvedSrc} alt={alt} {...rest} />
+    },
   }
 })
 
-// Mock Lucide React icons
-jest.mock('lucide-react', () => ({
-  ChevronDown: () => <div data-testid="chevron-down">ChevronDown</div>,
-  Grid: () => <div data-testid="grid-icon">Grid</div>,
-  List: () => <div data-testid="list-icon">List</div>,
-  Search: () => <div data-testid="search-icon">Search</div>,
-  X: () => <div data-testid="x-icon">X</div>,
-  Filter: () => <div data-testid="filter-icon">Filter</div>,
-}))
+jest.mock('lucide-react', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
+  const React = require('react')
+  const createIcon = (testId: string) =>
+    // eslint-disable-next-line react/display-name
+    (props: React.HTMLAttributes<HTMLDivElement>) => React.createElement('div', {
+      'data-testid': testId,
+      ...props,
+    })
+
+  return {
+    __esModule: true,
+    ChevronDown: createIcon('chevron-down'),
+    Grid: createIcon('grid-icon'),
+    List: createIcon('list-icon'),
+    Search: createIcon('search-icon'),
+    X: createIcon('x-icon'),
+    Filter: createIcon('filter-icon'),
+  }
+})
 
 const mockItems: Item[] = [
   {
@@ -52,7 +68,7 @@ const mockItems: Item[] = [
 describe('ItemGrid', () => {
   it('renders items in grid view', () => {
     render(<ItemGrid items={mockItems} viewMode="grid" />)
-    
+
     expect(screen.getByText('Test Product 1')).toBeInTheDocument()
     expect(screen.getByText('Test Product 2')).toBeInTheDocument()
     expect(screen.getByText('Test Vendor')).toBeInTheDocument()
@@ -61,75 +77,75 @@ describe('ItemGrid', () => {
 
   it('renders items in list view', () => {
     render(<ItemGrid items={mockItems} viewMode="list" />)
-    
+
     expect(screen.getByText('Test Product 1')).toBeInTheDocument()
     expect(screen.getByText('Test Product 2')).toBeInTheDocument()
   })
 
   it('shows loading state', () => {
     render(<ItemGrid items={[]} loading={true} />)
-    
+
     expect(screen.getByText('Loading...')).toBeInTheDocument()
   })
 
   it('shows empty state when no items', () => {
     render(<ItemGrid items={[]} loading={false} />)
-    
+
     expect(screen.getByText('No items yet')).toBeInTheDocument()
     expect(screen.getByText('Start by adding items using the browser extension')).toBeInTheDocument()
   })
 
   it('displays search functionality', () => {
     render(<ItemGrid items={mockItems} />)
-    
+
     expect(screen.getByPlaceholderText('Search products, vendors, colors...')).toBeInTheDocument()
     expect(screen.getByTestId('search-icon')).toBeInTheDocument()
   })
 
   it('displays sort dropdown', () => {
     render(<ItemGrid items={mockItems} />)
-    
+
     const sortSelect = screen.getByDisplayValue('Newest First')
     expect(sortSelect).toBeInTheDocument()
   })
 
   it('displays filter button', () => {
     render(<ItemGrid items={mockItems} />)
-    
+
     expect(screen.getByText('Filters')).toBeInTheDocument()
     expect(screen.getByTestId('filter-icon')).toBeInTheDocument()
   })
 
   it('displays item count', () => {
     render(<ItemGrid items={mockItems} />)
-    
+
     expect(screen.getByText('2 items')).toBeInTheDocument()
   })
 
   it('displays view mode toggle when callback provided', () => {
     const mockViewModeChange = jest.fn()
     render(
-      <ItemGrid 
-        items={mockItems} 
+      <ItemGrid
+        items={mockItems}
         viewMode="grid"
         onViewModeChange={mockViewModeChange}
       />
     )
-    
+
     expect(screen.getByTestId('grid-icon')).toBeInTheDocument()
     expect(screen.getByTestId('list-icon')).toBeInTheDocument()
   })
 
   it('formats prices correctly', () => {
     render(<ItemGrid items={mockItems} viewMode="grid" />)
-    
+
     expect(screen.getByText('$100.00')).toBeInTheDocument()
     expect(screen.getByText('$200.00')).toBeInTheDocument()
   })
 
   it('displays categories', () => {
     render(<ItemGrid items={mockItems} viewMode="grid" />)
-    
+
     expect(screen.getByText('Chair')).toBeInTheDocument()
     expect(screen.getByText('Table')).toBeInTheDocument()
   })
