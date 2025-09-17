@@ -1,12 +1,12 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { AlertCircle, Download, ExternalLink } from 'lucide-react'
-import ItemGrid, { Item, FilterOptions, SortOption } from '../components/ItemGrid'
+import ItemGrid, { Item, FilterOptions } from '../components/ItemGrid'
 import { api, ApiItem, SearchOptions } from '../lib/api'
 
 // Demo token for development - replace with real auth
-const DEMO_TOKEN = 'demo-token-12345'
+const DEMO_TOKEN = process.env.NEXT_PUBLIC_DEMO_TOKEN || 'demo-token-12345'
 
 export default function Home() {
   const [items, setItems] = useState<Item[]>([])
@@ -17,7 +17,7 @@ export default function Home() {
   const [showExtensionBanner, setShowExtensionBanner] = useState(true)
 
   // Load items from API
-  const loadItems = async (options: SearchOptions = {}, append = false) => {
+  const loadItems = useCallback(async (options: SearchOptions = {}, append = false) => {
     try {
       if (!append) setLoading(true)
       setError(null)
@@ -57,7 +57,7 @@ export default function Home() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   // Generate mock items for demonstration
   const generateMockItems = (): Item[] => {
@@ -83,7 +83,7 @@ export default function Home() {
   // Initial load
   useEffect(() => {
     loadItems()
-  }, []) // loadItems is stable, doesn't need to be in deps
+  }, [loadItems])
 
   // Handle search with semantic similarity
   const handleSearch = async (query: string) => {
@@ -146,7 +146,7 @@ export default function Home() {
   }
 
   // Handle sorting
-  const handleSort = async (_sortBy: SortOption) => {
+  const handleSort = async () => {
     // For now, sorting is handled client-side in ItemGrid
     // In a full implementation, this could be server-side
   }

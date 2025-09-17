@@ -1,0 +1,15 @@
+{
+  "name": "rolodex-extension",
+  "version": "0.3.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "lint": "node ./scripts/lint.mjs",
+    "test": "vitest run",
+    "package": "node ./scripts/package.mjs"
+  },
+  "devDependencies": {
+    "archiver": "^6.0.1",
+    "vitest": "^1.2.2"
+  }
+}
