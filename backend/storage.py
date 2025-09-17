@@ -1,65 +1,77 @@
-"""
-storage.py - Supabase Storage and vector embedding service
+"""Supabase storage and embedding helpers."""
 
-Provides functionality for:
-- Downloading images from external URLs
-- Uploading images to Supabase Storage
-- Generating vector embeddings using OpenAI
-- Semantic search using pgvector
-"""
+from __future__ import annotations
 
-import os
+import logging
 import hashlib
-import httpx
 import uuid
 from io import BytesIO
-from typing import Optional, List, Dict, Any, Tuple
+from typing import Any, Dict, List, Optional, Tuple
+
+import httpx
 from PIL import Image
-from supabase import create_client, Client
-import openai
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
+from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
-import logging
+
+try:  # pragma: no cover - optional dependency
+    from supabase import Client, create_client
+except ImportError:  # pragma: no cover - optional dependency
+    Client = Any  # type: ignore[misc, assignment]
+
+    def create_client(*args, **kwargs):  # type: ignore[override]
+        raise RuntimeError("Supabase client is not available. Install `supabase` to enable storage features.")
+
+try:  # pragma: no cover - optional dependency
+    import openai
+except ImportError as exc:  # pragma: no cover - optional dependency
+    openai = None
+
+from backend.core.config import get_settings
+from backend.core.db import get_engine
+
 
 logger = logging.getLogger(__name__)
 
 class StorageService:
     """Service for handling image storage and vector embeddings"""
     
-    def __init__(self):
-        # Supabase client setup
-        self.supabase_url = os.getenv("SUPABASE_PROJECT_URL")
-        self.supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-        
+    def __init__(
+        self,
+        *,
+        supabase_url: Optional[str] = None,
+        supabase_key: Optional[str] = None,
+        openai_api_key: Optional[str] = None,
+        bucket_name: str = "product-images",
+        engine: Optional[Engine] = None,
+    ) -> None:
+        settings = get_settings()
+
+        self.supabase_url = supabase_url or settings.supabase_project_url
+        self.supabase_key = supabase_key or settings.supabase_service_role_key
+
         if not self.supabase_url or not self.supabase_key:
-            raise RuntimeError("SUPABASE_PROJECT_URL and SUPABASE_SERVICE_ROLE_KEY are required")
-        
+            raise RuntimeError("Supabase credentials are required for storage operations")
+
         self.supabase: Client = create_client(self.supabase_url, self.supabase_key)
-        
-        # OpenAI client setup
-        self.openai_api_key = os.getenv("OPENAI_API_KEY")
+
+        self.openai_api_key = openai_api_key or settings.openai_api_key
         if not self.openai_api_key:
             raise RuntimeError("OPENAI_API_KEY is required for embeddings")
-        
+        if openai is None:
+            raise RuntimeError("openai package is required for embedding generation")
+
         openai.api_key = self.openai_api_key
         self.openai_client = openai.OpenAI(api_key=self.openai_api_key)
-        
-        # Storage bucket name
-        self.bucket_name = "product-images"
-        
-        # Database connection for vector operations
-        self.database_url = os.getenv("SUPABASE_DB_URL") or os.getenv("DATABASE_URL")
-        if not self.database_url:
-            raise RuntimeError("DATABASE_URL is required")
-        
-        self.engine = create_engine(
-            self.database_url,
-            pool_pre_ping=True,
-            pool_size=5,
-            max_overflow=10,
-            pool_timeout=30,
-            pool_recycle=1800,
-        )
+
+        self.bucket_name = bucket_name
+        self._engine = engine
+
+    @property
+    def engine(self) -> Engine:
+        if self._engine is None:
+            self._engine = get_engine()
+        return self._engine
     
     def _generate_file_path(self, url: str, user_id: str) -> str:
         """Generate a unique file path for the image based on URL hash and user ID"""
@@ -281,29 +293,51 @@ class StorageService:
         try:
             if not embedding:
                 return False
-            
-            # Convert embedding to string format for PostgreSQL
+
             embedding_str = f"[{','.join(map(str, embedding))}]"
-            
+
             sql = """
-                UPDATE items 
-                SET embedding = :embedding::vector 
+                UPDATE items
+                SET embedding = :embedding::vector
                 WHERE id = :item_id
             """
-            
+
             with self.engine.begin() as conn:
-                conn.execute(text(sql), {
-                    "embedding": embedding_str,
-                    "item_id": item_id
-                })
-            
+                conn.execute(
+                    text(sql),
+                    {
+                        "embedding": embedding_str,
+                        "item_id": item_id,
+                    },
+                )
+
             logger.info(f"Stored embedding for item {item_id}")
             return True
-            
+
         except Exception as e:
             logger.error(f"Failed to store embedding for item {item_id}: {str(e)}")
             return False
 
 
-# Global instance
-storage_service = StorageService()
+class _StorageProxy:
+    """Attribute proxy that lazily instantiates the storage service."""
+
+    _instance: Optional[StorageService] = None
+
+    def _get_instance(self) -> StorageService:
+        if self._instance is None:
+            self._instance = StorageService()
+        return self._instance
+
+    def __getattr__(self, item: str):  # noqa: D401
+        return getattr(self._get_instance(), item)
+
+
+def get_storage_service() -> StorageService:
+    """Return a shared StorageService instance, initialising on demand."""
+
+    return _storage_proxy._get_instance()
+
+
+_storage_proxy = _StorageProxy()
+storage_service = _storage_proxy
