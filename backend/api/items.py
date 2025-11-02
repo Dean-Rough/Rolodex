@@ -48,6 +48,22 @@ class ItemCreate(BaseModel):
     category: Optional[str] = None
     material: Optional[str] = None
     src_url: Optional[str] = None
+    tags: Optional[List[str]] = None
+    notes: Optional[str] = None
+
+
+class ItemUpdate(BaseModel):
+    title: Optional[str] = None
+    vendor: Optional[str] = None
+    price: Optional[float] = None
+    currency: Optional[str] = None
+    description: Optional[str] = None
+    colour_hex: Optional[str] = None
+    category: Optional[str] = None
+    material: Optional[str] = None
+    src_url: Optional[str] = None
+    tags: Optional[List[str]] = None
+    notes: Optional[str] = None
 
 
 class ItemOut(BaseModel):
@@ -59,8 +75,12 @@ class ItemOut(BaseModel):
     currency: Optional[str] = None
     description: Optional[str] = None
     colour_hex: Optional[str] = None
+    color_palette: Optional[List[str]] = None
     category: Optional[str] = None
     material: Optional[str] = None
+    tags: Optional[List[str]] = None
+    style_tags: Optional[List[str]] = None
+    notes: Optional[str] = None
     created_at: Optional[str] = None
 
 
@@ -136,6 +156,17 @@ async def create_item(
     except Exception as exc:  # noqa: BLE001
         print(f"Warning: Failed to store image in Supabase Storage: {exc}")
 
+    # Extract color palette in background
+    color_palette = None
+    try:
+        from backend.image_utils import extract_color_palette
+        loop = asyncio.get_running_loop()
+        color_palette = await loop.run_in_executor(
+            None, extract_color_palette, str(payload.img_url)
+        )
+    except Exception as exc:  # noqa: BLE001
+        print(f"Warning: Failed to extract color palette: {exc}")
+
     engine = get_engine()
     try:
         with engine.begin() as connection:
@@ -153,6 +184,9 @@ async def create_item(
                     category=payload.category,
                     material=payload.material,
                     src_url=payload.src_url,
+                    color_palette=color_palette,
+                    tags=payload.tags or [],
+                    notes=payload.notes,
                     created_at=dt.datetime.now(dt.timezone.utc),
                 )
             )
@@ -172,8 +206,11 @@ async def create_item(
         currency=payload.currency,
         description=payload.description,
         colour_hex=payload.colour_hex,
+        color_palette=color_palette,
         category=payload.category,
         material=payload.material,
+        tags=payload.tags,
+        notes=payload.notes,
     )
 
 
@@ -370,3 +407,249 @@ async def extract_metadata(
         print(f"Warning: Failed to generate embedding during extraction: {exc}")
 
     return extracted_data
+
+
+@router.get("/{item_id}", response_model=ItemOut)
+async def get_item(
+    item_id: str,
+    auth: AuthContext = Depends(get_auth),
+) -> ItemOut:
+    """Get details for a specific item."""
+    engine = get_engine()
+
+    with engine.connect() as conn:
+        row = conn.execute(
+            select(items_table).where(
+                and_(
+                    items_table.c.id == item_id,
+                    items_table.c.owner_id == auth.user_id,
+                )
+            )
+        ).mappings().first()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="Item not found")
+
+    return ItemOut(
+        id=row["id"],
+        img_url=row["img_url"],
+        title=row.get("title"),
+        vendor=row.get("vendor"),
+        price=row.get("price"),
+        currency=row.get("currency"),
+        description=row.get("description"),
+        colour_hex=row.get("colour_hex"),
+        color_palette=row.get("color_palette"),
+        category=row.get("category"),
+        material=row.get("material"),
+        tags=row.get("tags") or [],
+        style_tags=row.get("style_tags") or [],
+        notes=row.get("notes"),
+        created_at=_to_iso(row.get("created_at")),
+    )
+
+
+@router.patch("/{item_id}", response_model=ItemOut)
+async def update_item(
+    item_id: str,
+    payload: ItemUpdate,
+    auth: AuthContext = Depends(get_auth),
+) -> ItemOut:
+    """Update an existing item."""
+    engine = get_engine()
+
+    # Build update dict with only provided fields
+    updates = {k: v for k, v in payload.model_dump().items() if v is not None}
+
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+
+    updates["updated_at"] = dt.datetime.now(dt.timezone.utc)
+
+    with engine.begin() as conn:
+        # Check item exists and belongs to user
+        existing = conn.execute(
+            select(items_table.c.id).where(
+                and_(
+                    items_table.c.id == item_id,
+                    items_table.c.owner_id == auth.user_id,
+                )
+            )
+        ).first()
+
+        if not existing:
+            raise HTTPException(status_code=404, detail="Item not found")
+
+        # Update
+        from sqlalchemy import update as sql_update
+
+        conn.execute(
+            sql_update(items_table)
+            .where(items_table.c.id == item_id)
+            .values(**updates)
+        )
+
+        # Fetch updated item
+        row = conn.execute(
+            select(items_table).where(items_table.c.id == item_id)
+        ).mappings().first()
+
+    return ItemOut(
+        id=row["id"],
+        img_url=row["img_url"],
+        title=row.get("title"),
+        vendor=row.get("vendor"),
+        price=row.get("price"),
+        currency=row.get("currency"),
+        description=row.get("description"),
+        colour_hex=row.get("colour_hex"),
+        color_palette=row.get("color_palette"),
+        category=row.get("category"),
+        material=row.get("material"),
+        tags=row.get("tags") or [],
+        style_tags=row.get("style_tags") or [],
+        notes=row.get("notes"),
+        created_at=_to_iso(row.get("created_at")),
+    )
+
+
+@router.delete("/{item_id}", status_code=204)
+async def delete_item(
+    item_id: str,
+    auth: AuthContext = Depends(get_auth),
+) -> None:
+    """Delete an item."""
+    engine = get_engine()
+
+    with engine.begin() as conn:
+        from sqlalchemy import delete as sql_delete
+
+        result = conn.execute(
+            sql_delete(items_table).where(
+                and_(
+                    items_table.c.id == item_id,
+                    items_table.c.owner_id == auth.user_id,
+                )
+            )
+        )
+
+        if result.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Item not found")
+
+
+@router.post("/batch-delete", status_code=204)
+async def batch_delete_items(
+    item_ids: List[str],
+    auth: AuthContext = Depends(get_auth),
+) -> None:
+    """Delete multiple items at once."""
+    if not item_ids:
+        return
+
+    engine = get_engine()
+
+    with engine.begin() as conn:
+        from sqlalchemy import delete as sql_delete
+
+        conn.execute(
+            sql_delete(items_table).where(
+                and_(
+                    items_table.c.id.in_(item_ids),
+                    items_table.c.owner_id == auth.user_id,
+                )
+            )
+        )
+
+
+@router.get("/{item_id}/similar", response_model=ItemsResponse)
+async def find_similar_items(
+    item_id: str,
+    limit: int = 10,
+    auth: AuthContext = Depends(get_auth),
+    storage: StorageService = Depends(get_storage_dependency),
+) -> ItemsResponse:
+    """Find visually similar items based on image embeddings."""
+    engine = get_engine()
+
+    # Get the source item
+    with engine.connect() as conn:
+        source_item = conn.execute(
+            select(items_table).where(
+                and_(
+                    items_table.c.id == item_id,
+                    items_table.c.owner_id == auth.user_id,
+                )
+            )
+        ).mappings().first()
+
+    if not source_item:
+        raise HTTPException(status_code=404, detail="Item not found")
+
+    # Get image embedding
+    image_embedding = source_item.get("image_embedding")
+
+    if not image_embedding:
+        # No embedding available, fall back to category/style matching
+        with engine.connect() as conn:
+            filters = [
+                items_table.c.owner_id == auth.user_id,
+                items_table.c.id != item_id,  # Exclude self
+            ]
+
+            if source_item.get("category"):
+                filters.append(items_table.c.category == source_item["category"])
+
+            rows = conn.execute(
+                select(items_table)
+                .where(and_(*filters))
+                .order_by(items_table.c.created_at.desc())
+                .limit(limit)
+            ).mappings().all()
+    else:
+        # Use vector similarity if available
+        try:
+            similar = storage.search_by_embedding(
+                query_embedding=image_embedding,
+                user_id=auth.user_id,
+                limit=limit + 1,  # +1 to account for self
+            )
+            # Filter out the source item
+            rows = [item for item in similar if item["id"] != item_id][:limit]
+        except Exception as exc:  # noqa: BLE001
+            print(f"Vector search failed: {exc}")
+            # Fallback to category matching
+            with engine.connect() as conn:
+                rows = conn.execute(
+                    select(items_table)
+                    .where(
+                        and_(
+                            items_table.c.owner_id == auth.user_id,
+                            items_table.c.id != item_id,
+                            items_table.c.category == source_item.get("category"),
+                        )
+                    )
+                    .limit(limit)
+                ).mappings().all()
+
+    items = [
+        ItemOut(
+            id=row["id"],
+            img_url=row["img_url"],
+            title=row.get("title"),
+            vendor=row.get("vendor"),
+            price=row.get("price"),
+            currency=row.get("currency"),
+            description=row.get("description"),
+            colour_hex=row.get("colour_hex"),
+            color_palette=row.get("color_palette"),
+            category=row.get("category"),
+            material=row.get("material"),
+            tags=row.get("tags") or [],
+            style_tags=row.get("style_tags") or [],
+            notes=row.get("notes"),
+            created_at=_to_iso(row.get("created_at")),
+        )
+        for row in rows
+    ]
+
+    return ItemsResponse(items=items, search_type="similarity")
