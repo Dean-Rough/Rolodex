@@ -63,6 +63,17 @@ project_items_table = Table(
     Column("created_at", DateTime(timezone=True), server_default=func.now()),
 )
 
+users_table = Table(
+    "users",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("email", String(255), unique=True, nullable=False, index=True),
+    Column("password_hash", String(255)),
+    Column("full_name", String(255)),
+    Column("created_at", DateTime(timezone=True), server_default=func.now()),
+    Column("updated_at", DateTime(timezone=True), onupdate=func.now()),
+)
+
 Index("idx_items_created_at", items_table.c.created_at.desc())
 Index("idx_items_owner", items_table.c.owner_id)
 Index("idx_items_vendor", items_table.c.vendor)
