@@ -4,7 +4,7 @@ import { NextResponse } from 'next/server'
 export const dynamic = 'force-dynamic'
 
 export async function GET() {
-  const sessionCookie = cookies().get('rolodex_extension_session')
+  const sessionCookie = (await cookies()).get('rolodex_extension_session')
   const authenticated = Boolean(sessionCookie?.value)
 
   return NextResponse.json(
