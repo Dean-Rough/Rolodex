@@ -8,9 +8,13 @@ export type ApiItem = {
   currency?: string
   description?: string
   colour_hex?: string
+  color_palette?: string[]
   category?: string
   material?: string
   src_url?: string
+  tags?: string[]
+  style_tags?: string[]
+  notes?: string
   created_at?: string
 }
 
@@ -42,6 +46,65 @@ export interface CreateItemPayload {
   category?: string
   material?: string
   src_url?: string
+  tags?: string[]
+  notes?: string
+}
+
+export interface RegisterPayload {
+  email: string
+  password: string
+  full_name?: string
+}
+
+export interface LoginPayload {
+  email: string
+  password: string
+}
+
+export interface AuthResponse {
+  access_token: string
+  token_type: string
+  user: UserProfile
+}
+
+export interface UserProfile {
+  id: string
+  email: string
+  full_name?: string
+  created_at: string
+}
+
+export interface ApiProject {
+  id: string
+  name: string
+  created_at: string
+}
+
+export interface ApiProjectDetail extends ApiProject {
+  items: ApiItem[]
+  budget?: number
+  description?: string
+}
+
+export interface SavedSearch {
+  id: string
+  name: string
+  filters: SearchOptions
+  created_at: string
+}
+
+export interface ItemUpdatePayload {
+  title?: string
+  vendor?: string
+  price?: number
+  currency?: string
+  description?: string
+  colour_hex?: string
+  category?: string
+  material?: string
+  src_url?: string
+  tags?: string[]
+  notes?: string
 }
 
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'
@@ -157,9 +220,38 @@ function setCache<T>(key: string, data: T, ttl: number): void {
 }
 
 export const api = {
+  // Authentication
+  async register(payload: RegisterPayload): Promise<AuthResponse> {
+    const response = await request<AuthResponse>('/api/auth/register', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    })
+    return response
+  },
+
+  async login(payload: LoginPayload): Promise<AuthResponse> {
+    const response = await request<AuthResponse>('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    })
+    return response
+  },
+
+  async getCurrentUser(token: string): Promise<UserProfile> {
+    return request<UserProfile>('/api/auth/me', {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+  },
+
+  async getExtensionStatus(token: string): Promise<{ authenticated: boolean; user: UserProfile | null }> {
+    return request<{ authenticated: boolean; user: UserProfile | null }>('/api/auth/extension/status', {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+  },
+
   // List items with comprehensive filtering and caching
   async listItems(
-    token: string, 
+    token: string,
     opts: SearchOptions = {},
     useCache = true
   ): Promise<ListItemsResponse> {
@@ -247,6 +339,116 @@ export const api = {
     })
     cache.clear()
     return response
+  },
+
+  async updateItem(token: string, itemId: string, payload: ItemUpdatePayload): Promise<ApiItem> {
+    const response = await request<ApiItem>(`/api/items/${itemId}`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${token}` },
+      body: JSON.stringify(payload),
+    })
+    cache.clear()
+    return response
+  },
+
+  async deleteItem(token: string, itemId: string): Promise<void> {
+    await request<void>(`/api/items/${itemId}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    cache.clear()
+  },
+
+  async batchDeleteItems(token: string, itemIds: string[]): Promise<void> {
+    await request<void>(`/api/items/batch-delete`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: JSON.stringify(itemIds),
+    })
+    cache.clear()
+  },
+
+  async findSimilarItems(token: string, itemId: string, limit = 10): Promise<ListItemsResponse> {
+    return request<ListItemsResponse>(`/api/items/${itemId}/similar?limit=${limit}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+  },
+
+  // Projects
+  async listProjects(token: string): Promise<ApiProject[]> {
+    return request<ApiProject[]>('/api/projects', {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+  },
+
+  async createProject(token: string, name: string): Promise<ApiProject> {
+    const response = await request<ApiProject>('/api/projects', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ name }),
+    })
+    cache.clear()
+    return response
+  },
+
+  async getProject(token: string, projectId: string): Promise<ApiProjectDetail> {
+    return request<ApiProjectDetail>(`/api/projects/${projectId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+  },
+
+  async addItemToProject(token: string, projectId: string, itemId: string): Promise<void> {
+    await request<void>(`/api/projects/${projectId}/add_item`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ item_id: itemId }),
+    })
+    cache.clear()
+  },
+
+  async removeItemFromProject(token: string, projectId: string, itemId: string): Promise<void> {
+    await request<void>(`/api/projects/${projectId}/remove_item`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ item_id: itemId }),
+    })
+    cache.clear()
+  },
+
+  async deleteProject(token: string, projectId: string): Promise<void> {
+    await request<void>(`/api/projects/${projectId}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    cache.clear()
+  },
+
+  // Saved Searches
+  async listSavedSearches(token: string): Promise<SavedSearch[]> {
+    return request<SavedSearch[]>('/api/searches', {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+  },
+
+  async createSavedSearch(token: string, name: string, filters: SearchOptions): Promise<SavedSearch> {
+    return request<SavedSearch>('/api/searches', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ name, filters }),
+    })
+  },
+
+  async getSavedSearch(token: string, searchId: string): Promise<SavedSearch> {
+    return request<SavedSearch>(`/api/searches/${searchId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+  },
+
+  async deleteSavedSearch(token: string, searchId: string): Promise<void> {
+    await request<void>(`/api/searches/${searchId}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    })
   },
 
   // Health check

@@ -115,6 +115,35 @@ def add_item_to_project(
     return {}
 
 
+@router.delete("/{project_id}", status_code=204)
+def delete_project(
+    project_id: str,
+    auth: AuthContext = Depends(get_auth),
+    _: None = Depends(rate_limit),
+):
+    engine = get_engine()
+    with engine.begin() as connection:
+        # First, delete all project_items associated with this project
+        connection.execute(
+            delete(project_items_table).where(
+                project_items_table.c.project_id == project_id
+            )
+        )
+        # Then, delete the project itself
+        result = connection.execute(
+            delete(projects_table).where(
+                and_(
+                    projects_table.c.id == project_id,
+                    projects_table.c.owner_id == auth.user_id,
+                )
+            )
+        )
+        if result.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+    return {}
+
+
 @router.delete("/{project_id}/remove_item", status_code=204)
 def remove_item_from_project(
     project_id: str,

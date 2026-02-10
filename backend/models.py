@@ -43,7 +43,13 @@ items_table = Table(
     Column("material", Text),
     Column("src_url", Text),
     Column("embedding", JSON),
+    Column("image_embedding", JSON),  # CLIP image embedding for visual similarity
+    Column("color_palette", JSON),  # Array of 5 dominant colors
+    Column("tags", JSON),  # Array of user tags
+    Column("style_tags", JSON),  # AI-detected style tags
+    Column("notes", Text),  # User notes
     Column("created_at", DateTime(timezone=True), server_default=func.now()),
+    Column("updated_at", DateTime(timezone=True), onupdate=func.now()),
 )
 
 projects_table = Table(
@@ -52,6 +58,19 @@ projects_table = Table(
     Column("id", String, primary_key=True),
     Column("owner_id", String, nullable=False, index=True),
     Column("name", Text, nullable=False),
+    Column("budget", Float),  # Project budget
+    Column("description", Text),  # Project description
+    Column("created_at", DateTime(timezone=True), server_default=func.now()),
+    Column("updated_at", DateTime(timezone=True), onupdate=func.now()),
+)
+
+saved_searches_table = Table(
+    "saved_searches",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("owner_id", String, nullable=False, index=True),
+    Column("name", String(255), nullable=False),
+    Column("filters", JSON, nullable=False),  # Stored filter configuration
     Column("created_at", DateTime(timezone=True), server_default=func.now()),
 )
 
@@ -63,10 +82,22 @@ project_items_table = Table(
     Column("created_at", DateTime(timezone=True), server_default=func.now()),
 )
 
+users_table = Table(
+    "users",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("email", String(255), unique=True, nullable=False, index=True),
+    Column("password_hash", String(255)),
+    Column("full_name", String(255)),
+    Column("created_at", DateTime(timezone=True), server_default=func.now()),
+    Column("updated_at", DateTime(timezone=True), onupdate=func.now()),
+)
+
 Index("idx_items_created_at", items_table.c.created_at.desc())
 Index("idx_items_owner", items_table.c.owner_id)
 Index("idx_items_vendor", items_table.c.vendor)
 Index("idx_projects_owner", projects_table.c.owner_id)
+Index("idx_saved_searches_owner", saved_searches_table.c.owner_id)
 
 
 DEMO_ITEMS: List[dict] = [
