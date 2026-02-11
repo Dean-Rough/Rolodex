@@ -12,19 +12,26 @@ export default function Home() {
   const { getToken, isSignedIn, isLoaded } = useRolodexAuth()
   const [items, setItems] = useState<Item[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [nextCursor, setNextCursor] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
+  const [activeFilters, setActiveFilters] = useState<SearchOptions>({})
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [selectedItem, setSelectedItem] = useState<ApiItem | null>(null)
 
   const loadItems = useCallback(async (options: SearchOptions = {}, append = false) => {
     try {
-      if (!append) setLoading(true)
+      if (append) {
+        setLoadingMore(true)
+      } else {
+        setLoading(true)
+      }
       setError(null)
 
       const token = await getToken()
       const response = await api.listItems(token, {
-        limit: 50,
+        limit: 40,
         ...options,
       })
 
@@ -47,11 +54,13 @@ export default function Home() {
       } else {
         setItems(transformedItems)
       }
+      setNextCursor(response.items.length >= 40 ? response.nextCursor || null : null)
     } catch (err) {
       console.error('Failed to load items:', err)
       setError(err instanceof Error ? err.message : 'Failed to load items')
     } finally {
       setLoading(false)
+      setLoadingMore(false)
     }
   }, [getToken])
 
@@ -72,7 +81,7 @@ export default function Home() {
         setError(null)
 
         const token = await getToken()
-        const response = await api.searchItems(token, query, { limit: 50 })
+        const response = await api.searchItems(token, query, { limit: 40 })
 
         const transformedItems: Item[] = response.items.map((apiItem: ApiItem) => ({
           id: apiItem.id,
@@ -89,6 +98,7 @@ export default function Home() {
         }))
 
         setItems(transformedItems)
+        setNextCursor(response.items.length >= 40 ? response.nextCursor || null : null)
       } catch (err) {
         console.error('Search failed:', err)
         setError(err instanceof Error ? err.message : 'Search failed')
@@ -109,8 +119,14 @@ export default function Home() {
       hex: filters.color,
     }
 
+    setActiveFilters(searchOptions)
     await loadItems(searchOptions)
   }
+
+  const handleLoadMore = useCallback(async () => {
+    if (!nextCursor || loadingMore) return
+    await loadItems({ ...activeFilters, query: searchQuery, cursor: nextCursor }, true)
+  }, [nextCursor, loadingMore, activeFilters, searchQuery, loadItems])
 
   const handleSort = async () => {
     // Sorting handled client-side in ItemGrid
@@ -303,6 +319,9 @@ export default function Home() {
           onFilter={handleFilter}
           onSort={handleSort}
           onItemClick={handleItemClick}
+          onLoadMore={handleLoadMore}
+          hasMore={!!nextCursor}
+          loadingMore={loadingMore}
           searchQuery={searchQuery}
           viewMode={viewMode}
           onViewModeChange={setViewMode}

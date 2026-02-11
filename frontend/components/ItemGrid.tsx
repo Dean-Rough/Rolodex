@@ -26,6 +26,9 @@ export interface ItemGridProps {
   onFilter?: (filters: FilterOptions) => void
   onSort?: (sortBy: SortOption) => void
   onItemClick?: (item: Item) => void
+  onLoadMore?: () => void
+  hasMore?: boolean
+  loadingMore?: boolean
   searchQuery?: string
   className?: string
   viewMode?: 'grid' | 'list'
@@ -210,6 +213,9 @@ export default function ItemGrid({
   onFilter,
   onSort,
   onItemClick,
+  onLoadMore,
+  hasMore = false,
+  loadingMore = false,
   searchQuery = '',
   className = '',
   viewMode = 'grid',
@@ -486,14 +492,29 @@ export default function ItemGrid({
           </p>
         </div>
       ) : (
-        <div className={viewMode === 'grid' 
-          ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"
-          : "space-y-4"
-        }>
-          {sortedItems.map((item) => (
-            <ItemCard key={item.id} item={item} viewMode={viewMode} onClick={onItemClick ? () => onItemClick(item) : undefined} />
-          ))}
-        </div>
+        <>
+          <div className={viewMode === 'grid'
+            ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"
+            : "space-y-4"
+          }>
+            {sortedItems.map((item) => (
+              <ItemCard key={item.id} item={item} viewMode={viewMode} onClick={onItemClick ? () => onItemClick(item) : undefined} />
+            ))}
+            {loadingMore && Array.from({ length: 4 }, (_, i) => (
+              <ItemSkeleton key={`loading-more-${i}`} viewMode={viewMode} />
+            ))}
+          </div>
+          {hasMore && !loadingMore && onLoadMore && (
+            <div className="mt-8 text-center">
+              <button
+                onClick={onLoadMore}
+                className="px-6 py-2.5 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                Load more
+              </button>
+            </div>
+          )}
+        </>
       )}
     </div>
   )
