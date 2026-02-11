@@ -193,13 +193,7 @@ async def get_current_user(auth: Annotated[AuthContext, Depends(get_auth)]) -> U
         ).first()
 
         if not user:
-            # For demo tokens, return a synthetic user
-            return UserProfile(
-                id=auth.user_id,
-                email="demo@rolodex.app",
-                full_name="Demo User",
-                created_at=dt.datetime.now(dt.timezone.utc).isoformat(),
-            )
+            raise HTTPException(status_code=404, detail="User not found")
 
         return UserProfile(
             id=user.id,
@@ -228,27 +222,18 @@ async def extension_status(auth: Annotated[AuthContext, Depends(get_auth)] | Non
                 ).where(users_table.c.id == auth.user_id)
             ).first()
 
-            if user:
-                return ExtensionStatusResponse(
-                    authenticated=True,
-                    user=UserProfile(
-                        id=user.id,
-                        email=user.email,
-                        full_name=user.full_name,
-                        created_at=user.created_at.isoformat() if user.created_at else "",
-                    ),
-                )
-            else:
-                # Demo user fallback
-                return ExtensionStatusResponse(
-                    authenticated=True,
-                    user=UserProfile(
-                        id=auth.user_id,
-                        email="demo@rolodex.app",
-                        full_name="Demo User",
-                        created_at=dt.datetime.now(dt.timezone.utc).isoformat(),
-                    ),
-                )
+            if not user:
+                return ExtensionStatusResponse(authenticated=False, user=None)
+
+            return ExtensionStatusResponse(
+                authenticated=True,
+                user=UserProfile(
+                    id=user.id,
+                    email=user.email,
+                    full_name=user.full_name,
+                    created_at=user.created_at.isoformat() if user.created_at else "",
+                ),
+            )
     except Exception:  # noqa: BLE001
         return ExtensionStatusResponse(authenticated=False, user=None)
 
