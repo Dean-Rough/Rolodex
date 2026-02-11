@@ -5,8 +5,9 @@ import { useParams, useRouter } from 'next/navigation'
 import Image from 'next/image'
 import Link from 'next/link'
 import { ArrowLeft, Trash2, Image as ImageIcon } from 'lucide-react'
-import { api, type ApiProjectDetail } from '@/lib/api'
+import { api, type ApiItem, type ApiProjectDetail } from '@/lib/api'
 import { useRolodexAuth } from '@/hooks/use-auth'
+import ItemDetailModal from '@/components/ItemDetailModal'
 
 export default function ProjectDetailPage() {
   const params = useParams()
@@ -19,6 +20,7 @@ export default function ProjectDetailPage() {
   const [error, setError] = useState<string | null>(null)
   const [removeConfirmId, setRemoveConfirmId] = useState<string | null>(null)
   const [removing, setRemoving] = useState(false)
+  const [selectedItem, setSelectedItem] = useState<ApiItem | null>(null)
 
   useEffect(() => {
     if (isLoaded) loadProject()
@@ -51,6 +53,26 @@ export default function ProjectDetailPage() {
     } finally {
       setRemoving(false)
     }
+  }
+
+  function handleItemUpdated(updated: ApiItem) {
+    if (project) {
+      setProject({
+        ...project,
+        items: project.items.map(i => i.id === updated.id ? updated : i),
+      })
+    }
+    setSelectedItem(updated)
+  }
+
+  function handleItemDeleted(itemId: string) {
+    if (project) {
+      setProject({
+        ...project,
+        items: project.items.filter(i => i.id !== itemId),
+      })
+    }
+    setSelectedItem(null)
   }
 
   if (loading) {
@@ -127,7 +149,8 @@ export default function ProjectDetailPage() {
             {project.items.map((item) => (
               <div
                 key={item.id}
-                className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow"
+                className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow cursor-pointer"
+                onClick={() => setSelectedItem(item as ApiItem)}
               >
                 <div className="relative aspect-square bg-gray-100">
                   <Image
@@ -155,7 +178,7 @@ export default function ProjectDetailPage() {
                     </p>
                   )}
                   {removeConfirmId === item.id ? (
-                    <div className="flex gap-2">
+                    <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
                       <button
                         onClick={() => setRemoveConfirmId(null)}
                         disabled={removing}
@@ -173,7 +196,7 @@ export default function ProjectDetailPage() {
                     </div>
                   ) : (
                     <button
-                      onClick={() => setRemoveConfirmId(item.id)}
+                      onClick={(e) => { e.stopPropagation(); setRemoveConfirmId(item.id) }}
                       className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors"
                     >
                       <Trash2 className="w-3 h-3" />
@@ -186,6 +209,15 @@ export default function ProjectDetailPage() {
           </div>
         )}
       </div>
+
+      {selectedItem && (
+        <ItemDetailModal
+          item={selectedItem}
+          onClose={() => setSelectedItem(null)}
+          onItemUpdated={handleItemUpdated}
+          onItemDeleted={handleItemDeleted}
+        />
+      )}
     </div>
   )
 }
