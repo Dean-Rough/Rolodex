@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import datetime as dt
-import hashlib
-import secrets
 import uuid
 from typing import Annotated
 
+import bcrypt
 import jwt
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, EmailStr, Field
@@ -37,14 +36,6 @@ class LoginRequest(BaseModel):
     password: str
 
 
-class AuthResponse(BaseModel):
-    """Authentication response with JWT token."""
-
-    access_token: str
-    token_type: str = "bearer"
-    user: UserProfile
-
-
 class UserProfile(BaseModel):
     """User profile information."""
 
@@ -52,6 +43,14 @@ class UserProfile(BaseModel):
     email: str
     full_name: str | None = None
     created_at: str
+
+
+class AuthResponse(BaseModel):
+    """Authentication response with JWT token."""
+
+    access_token: str
+    token_type: str = "bearer"
+    user: UserProfile
 
 
 class ExtensionStatusResponse(BaseModel):
@@ -62,18 +61,14 @@ class ExtensionStatusResponse(BaseModel):
 
 
 def hash_password(password: str) -> str:
-    """Hash a password using SHA-256 with a salt."""
-    salt = secrets.token_hex(16)
-    pwd_hash = hashlib.sha256((salt + password).encode()).hexdigest()
-    return f"{salt}${pwd_hash}"
+    """Hash a password using bcrypt with automatic salting."""
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
 
 def verify_password(password: str, password_hash: str) -> bool:
-    """Verify a password against a stored hash."""
+    """Verify a password against a stored bcrypt hash."""
     try:
-        salt, expected_hash = password_hash.split("$", 1)
-        pwd_hash = hashlib.sha256((salt + password).encode()).hexdigest()
-        return pwd_hash == expected_hash
+        return bcrypt.checkpw(password.encode(), password_hash.encode())
     except (ValueError, AttributeError):
         return False
 

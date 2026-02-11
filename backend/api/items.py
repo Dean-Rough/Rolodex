@@ -7,7 +7,7 @@ import datetime as dt
 import uuid
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, Field, HttpUrl
 from sqlalchemy import and_, func, insert, or_, select
 from sqlalchemy.exc import SQLAlchemyError
@@ -513,11 +513,11 @@ async def update_item(
     )
 
 
-@router.delete("/{item_id}", status_code=204)
+@router.delete("/{item_id}", status_code=204, response_model=None)
 async def delete_item(
     item_id: str,
     auth: AuthContext = Depends(get_auth),
-) -> None:
+):
     """Delete an item."""
     engine = get_engine()
 
@@ -537,11 +537,11 @@ async def delete_item(
             raise HTTPException(status_code=404, detail="Item not found")
 
 
-@router.post("/batch-delete", status_code=204)
+@router.post("/batch-delete", status_code=204, response_model=None)
 async def batch_delete_items(
     item_ids: List[str],
     auth: AuthContext = Depends(get_auth),
-) -> None:
+):
     """Delete multiple items at once."""
     if not item_ids:
         return

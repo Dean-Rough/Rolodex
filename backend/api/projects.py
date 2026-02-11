@@ -7,7 +7,7 @@ import uuid
 import datetime as dt
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import and_, delete, insert, select
 from sqlalchemy.exc import IntegrityError
@@ -82,7 +82,7 @@ def get_project(project_id: str, auth: AuthContext = Depends(get_auth)):
     }
 
 
-@router.post("/{project_id}/add_item", status_code=204)
+@router.post("/{project_id}/add_item", status_code=204, response_model=None)
 def add_item_to_project(
     project_id: str,
     body: ProjectItemLink,
@@ -115,7 +115,7 @@ def add_item_to_project(
     return {}
 
 
-@router.delete("/{project_id}", status_code=204)
+@router.delete("/{project_id}", status_code=204, response_model=None)
 def delete_project(
     project_id: str,
     auth: AuthContext = Depends(get_auth),
@@ -144,7 +144,7 @@ def delete_project(
     return {}
 
 
-@router.delete("/{project_id}/remove_item", status_code=204)
+@router.delete("/{project_id}/remove_item", status_code=204, response_model=None)
 def remove_item_from_project(
     project_id: str,
     body: ProjectItemLink,
