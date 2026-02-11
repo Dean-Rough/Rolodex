@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 import uuid
 from typing import Any
+
+logger = logging.getLogger("rolodex")
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
@@ -49,7 +52,7 @@ def create_app() -> FastAPI:
                 "duration_ms": duration_ms,
                 "request_id": req_id,
             }
-            print(json.dumps(log))
+            logger.info(json.dumps(log))
         except Exception:  # noqa: BLE001
             pass
         return response

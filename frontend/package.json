@@ -12,11 +12,7 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@geist-ui/icons": "1.0.2",
-    "@geist-ui/react": "2.2.5",
-    "@shadcn/ui": "0.0.4",
     "@tailwindcss/postcss": "^4.1.18",
-    "framer-motion": "12.23.6",
     "html2canvas": "^1.4.1",
     "jspdf": "^2.5.2",
     "lucide-react": "^0.542.0",

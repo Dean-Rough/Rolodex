@@ -1,6 +1,5 @@
 import type { Metadata } from 'next'
 import './globals.css'
-import { QueryProvider } from '@/lib/query'
 import { AuthProvider } from '@/lib/auth-context'
 
 export const metadata: Metadata = {
@@ -17,7 +16,7 @@ export default function RootLayout({
     <html lang="en">
       <body className="font-sans">
         <AuthProvider>
-          <QueryProvider>{children}</QueryProvider>
+          {children}
         </AuthProvider>
       </body>
     </html>
