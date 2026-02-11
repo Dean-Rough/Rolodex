@@ -1,6 +1,22 @@
-import { clerkMiddleware } from "@clerk/nextjs/server";
+import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
+import type { NextFetchEvent } from "next/server";
 
-export default clerkMiddleware();
+const isExtensionAuth = createRouteMatcher(["/auth/extension(.*)"]);
+
+const clerkHandler = clerkMiddleware(async (auth, req) => {
+  if (isExtensionAuth(req)) {
+    return NextResponse.next();
+  }
+});
+
+export default function middleware(req: NextRequest, event: NextFetchEvent) {
+  if (!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || !process.env.CLERK_SECRET_KEY) {
+    return NextResponse.next();
+  }
+  return clerkHandler(req, event);
+}
 
 export const config = {
   matcher: [
