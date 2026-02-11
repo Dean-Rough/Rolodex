@@ -1,11 +1,14 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { AlertCircle } from 'lucide-react'
+import { AlertCircle, Sparkles } from 'lucide-react'
+import Link from 'next/link'
 import ItemGrid, { Item, FilterOptions } from '../components/ItemGrid'
 import { api, ApiItem, SearchOptions } from '../lib/api'
+import { useRolodexAuth } from '../hooks/use-auth'
 
 export default function Home() {
+  const { getToken, isSignedIn, isLoaded } = useRolodexAuth()
   const [items, setItems] = useState<Item[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -17,7 +20,8 @@ export default function Home() {
       if (!append) setLoading(true)
       setError(null)
 
-      const response = await api.listItems('', {
+      const token = await getToken()
+      const response = await api.listItems(token, {
         limit: 50,
         ...options,
       })
@@ -47,11 +51,15 @@ export default function Home() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [getToken])
 
   useEffect(() => {
-    loadItems()
-  }, [loadItems])
+    if (isLoaded && isSignedIn) {
+      loadItems()
+    } else if (isLoaded && !isSignedIn) {
+      setLoading(false)
+    }
+  }, [isLoaded, isSignedIn, loadItems])
 
   const handleSearch = async (query: string) => {
     setSearchQuery(query)
@@ -61,7 +69,8 @@ export default function Home() {
         setLoading(true)
         setError(null)
 
-        const response = await api.searchItems('', query, { limit: 50 })
+        const token = await getToken()
+        const response = await api.searchItems(token, query, { limit: 50 })
 
         const transformedItems: Item[] = response.items.map((apiItem: ApiItem) => ({
           id: apiItem.id,
@@ -105,6 +114,22 @@ export default function Home() {
     // Sorting handled client-side in ItemGrid
   }
 
+  if (isLoaded && !isSignedIn) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <div className="container mx-auto px-4 py-16 text-center">
+          <Sparkles className="mx-auto mb-6 h-12 w-12 text-gray-400" />
+          <h1 className="text-4xl font-bold text-gray-900 mb-4">Your FF&E Product Library</h1>
+          <p className="text-lg text-gray-600 mb-8 max-w-xl mx-auto">
+            Right-click any product image on the web. AI captures, tags, and stores it in your
+            personal searchable library, ready for client projects and moodboards.
+          </p>
+          <p className="text-sm text-gray-500">Sign in to get started.</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="container mx-auto px-4 py-8">
@@ -138,19 +163,19 @@ export default function Home() {
         />
       </div>
 
-      {!loading && items.length === 0 && !error && (
+      {!loading && items.length === 0 && !error && isSignedIn && (
         <div className="container mx-auto px-4 pb-16">
           <div className="text-center">
             <h2 className="text-2xl font-semibold text-gray-900 mb-4">Get Started</h2>
             <p className="text-gray-600 mb-4">
               Install the browser extension to start capturing products, or use the capture workspace to add items manually.
             </p>
-            <button
-              onClick={() => loadItems()}
+            <Link
+              href="/capture"
               className="inline-flex items-center px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors"
             >
-              Refresh items
-            </button>
+              Open Capture Workspace
+            </Link>
           </div>
         </div>
       )}
