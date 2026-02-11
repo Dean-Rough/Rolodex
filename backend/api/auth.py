@@ -73,10 +73,21 @@ def verify_password(password: str, password_hash: str) -> bool:
         return False
 
 
+def _get_jwt_secret() -> str:
+    """Return the JWT signing secret, raising if not configured."""
+    settings = get_settings()
+    secret = settings.supabase_jwt_secret or settings.jwt_secret
+    if not secret:
+        raise RuntimeError(
+            "JWT_SECRET or SUPABASE_JWT_SECRET must be set. "
+            "The application cannot sign or verify tokens without a secret."
+        )
+    return secret
+
+
 def create_access_token(user_id: str, email: str) -> str:
     """Create a JWT access token for a user."""
-    settings = get_settings()
-    secret = settings.supabase_jwt_secret or settings.jwt_secret or "dev-secret-change-me"
+    secret = _get_jwt_secret()
 
     payload = {
         "sub": user_id,

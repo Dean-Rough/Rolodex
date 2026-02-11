@@ -5,6 +5,7 @@ import sys
 from typing import Any, Dict, List
 
 import httpx
+import jwt
 import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -40,6 +41,7 @@ async def app(tmp_path):
     db_path = tmp_path / "rolodex-test.db"
     os.environ["DATABASE_URL"] = f"sqlite:///{db_path}"
     os.environ["ROLODEX_SEED_DEMO"] = "0"
+    os.environ["JWT_SECRET"] = "test-secret"
     get_settings.cache_clear()
     get_engine.cache_clear()
 
@@ -64,8 +66,13 @@ async def client(app):
         yield async_client
 
 
-def _auth_headers(token: str = "test-token") -> Dict[str, str]:
-    return {"Authorization": f"Bearer {token}"}
+def _make_token(sub: str = "00000000-0000-0000-0000-test-token00") -> str:
+    secret = os.environ["JWT_SECRET"]
+    return jwt.encode({"sub": sub}, secret, algorithm="HS256")
+
+
+def _auth_headers() -> Dict[str, str]:
+    return {"Authorization": f"Bearer {_make_token()}"}
 
 
 @pytest.mark.anyio
