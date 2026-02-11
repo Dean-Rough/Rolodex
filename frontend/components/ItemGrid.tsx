@@ -25,6 +25,7 @@ export interface ItemGridProps {
   onSearch?: (query: string) => void
   onFilter?: (filters: FilterOptions) => void
   onSort?: (sortBy: SortOption) => void
+  onItemClick?: (item: Item) => void
   searchQuery?: string
   className?: string
   viewMode?: 'grid' | 'list'
@@ -77,7 +78,7 @@ const ItemSkeleton = ({ viewMode }: { viewMode: 'grid' | 'list' }) => {
 }
 
 // Individual item component
-const ItemCard = ({ item, viewMode }: { item: Item; viewMode: 'grid' | 'list' }) => {
+const ItemCard = ({ item, viewMode, onClick }: { item: Item; viewMode: 'grid' | 'list'; onClick?: () => void }) => {
   const [imageLoaded, setImageLoaded] = useState(false)
   const [imageError, setImageError] = useState(false)
 
@@ -94,7 +95,7 @@ const ItemCard = ({ item, viewMode }: { item: Item; viewMode: 'grid' | 'list' })
 
   if (viewMode === 'list') {
     return (
-      <div className="flex gap-4 p-4 border rounded-lg hover:shadow-md transition-shadow">
+      <div className={`flex gap-4 p-4 border rounded-lg hover:shadow-md transition-shadow ${onClick ? 'cursor-pointer' : ''}`} onClick={onClick}>
         <div className="relative w-24 h-24 flex-shrink-0 rounded-lg overflow-hidden bg-gray-100">
           {!imageError && item.img_url && (
             <Image
@@ -147,7 +148,7 @@ const ItemCard = ({ item, viewMode }: { item: Item; viewMode: 'grid' | 'list' })
   }
 
   return (
-    <div className="group border rounded-lg overflow-hidden hover:shadow-lg transition-shadow">
+    <div className={`group border rounded-lg overflow-hidden hover:shadow-lg transition-shadow ${onClick ? 'cursor-pointer' : ''}`} onClick={onClick}>
       <div className="relative aspect-square bg-gray-100">
         {!imageError && item.img_url && (
           <Image
@@ -208,6 +209,7 @@ export default function ItemGrid({
   onSearch,
   onFilter,
   onSort,
+  onItemClick,
   searchQuery = '',
   className = '',
   viewMode = 'grid',
@@ -489,7 +491,7 @@ export default function ItemGrid({
           : "space-y-4"
         }>
           {sortedItems.map((item) => (
-            <ItemCard key={item.id} item={item} viewMode={viewMode} />
+            <ItemCard key={item.id} item={item} viewMode={viewMode} onClick={onItemClick ? () => onItemClick(item) : undefined} />
           ))}
         </div>
       )}

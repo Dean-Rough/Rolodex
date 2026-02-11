@@ -15,6 +15,8 @@ export default function ProjectsPage() {
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [newProjectName, setNewProjectName] = useState('')
   const [creating, setCreating] = useState(false)
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
     if (isLoaded && isSignedIn) {
@@ -59,15 +61,17 @@ export default function ProjectsPage() {
   }
 
   async function handleDeleteProject(projectId: string) {
-    if (!window.confirm('Are you sure you want to delete this project?')) return
-
+    setDeleting(true)
     try {
       const token = await getToken()
       await api.deleteProject(token, projectId)
+      setDeleteConfirmId(null)
       await loadProjects()
     } catch (err) {
       console.error('Failed to delete project:', err)
       setError('Failed to delete project. Please try again.')
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -134,27 +138,51 @@ export default function ProjectsPage() {
                 className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow cursor-pointer"
                 onClick={() => router.push(`/projects/${project.id}`)}
               >
-                <div className="flex items-start justify-between mb-3">
-                  <h3 className="text-lg font-semibold text-gray-900">
-                    {project.name}
-                  </h3>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      handleDeleteProject(project.id)
-                    }}
-                    className="text-gray-400 hover:text-red-600 transition-colors p-1"
-                    title="Delete project"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-                <div className="text-sm text-gray-500 mb-1">
-                  {(project as { item_count?: number }).item_count || 0} items
-                </div>
-                <div className="text-xs text-gray-400">
-                  Created {new Date(project.created_at).toLocaleDateString()}
-                </div>
+                {deleteConfirmId === project.id ? (
+                  <div className="space-y-3" onClick={(e) => e.stopPropagation()}>
+                    <p className="text-sm text-gray-700">Delete &ldquo;{project.name}&rdquo;?</p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setDeleteConfirmId(null)}
+                        disabled={deleting}
+                        className="flex-1 px-3 py-1.5 bg-gray-100 text-gray-700 rounded text-xs hover:bg-gray-200 transition-colors"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={() => handleDeleteProject(project.id)}
+                        disabled={deleting}
+                        className="flex-1 px-3 py-1.5 bg-red-600 text-white rounded text-xs hover:bg-red-700 transition-colors disabled:opacity-50"
+                      >
+                        {deleting ? 'Deleting...' : 'Delete'}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-start justify-between mb-3">
+                      <h3 className="text-lg font-semibold text-gray-900">
+                        {project.name}
+                      </h3>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setDeleteConfirmId(project.id)
+                        }}
+                        className="text-gray-400 hover:text-red-600 transition-colors p-1"
+                        title="Delete project"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <div className="text-sm text-gray-500 mb-1">
+                      {(project as { item_count?: number }).item_count || 0} items
+                    </div>
+                    <div className="text-xs text-gray-400">
+                      Created {new Date(project.created_at).toLocaleDateString()}
+                    </div>
+                  </>
+                )}
               </div>
             ))}
           </div>

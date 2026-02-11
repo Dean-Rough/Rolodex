@@ -17,6 +17,8 @@ export default function ProjectDetailPage() {
   const [project, setProject] = useState<ApiProjectDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [removeConfirmId, setRemoveConfirmId] = useState<string | null>(null)
+  const [removing, setRemoving] = useState(false)
 
   useEffect(() => {
     if (isLoaded) loadProject()
@@ -38,14 +40,16 @@ export default function ProjectDetailPage() {
   }
 
   async function handleRemoveItem(itemId: string) {
-    if (!window.confirm('Remove this item from the project?')) return
-
+    setRemoving(true)
     try {
       const token = await getToken()
       await api.removeItemFromProject(token, projectId, itemId)
+      setRemoveConfirmId(null)
       await loadProject()
     } catch (err) {
       console.error('Failed to remove item:', err)
+    } finally {
+      setRemoving(false)
     }
   }
 
@@ -150,13 +154,32 @@ export default function ProjectDetailPage() {
                       }).format(item.price)}
                     </p>
                   )}
-                  <button
-                    onClick={() => handleRemoveItem(item.id)}
-                    className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors"
-                  >
-                    <Trash2 className="w-3 h-3" />
-                    Remove from Project
-                  </button>
+                  {removeConfirmId === item.id ? (
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setRemoveConfirmId(null)}
+                        disabled={removing}
+                        className="flex-1 px-3 py-1.5 text-xs bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={() => handleRemoveItem(item.id)}
+                        disabled={removing}
+                        className="flex-1 inline-flex items-center justify-center gap-1 px-3 py-1.5 text-xs bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
+                      >
+                        {removing ? 'Removing...' : 'Confirm'}
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setRemoveConfirmId(item.id)}
+                      className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                      Remove from Project
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
