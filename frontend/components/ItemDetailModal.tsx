@@ -10,7 +10,8 @@ import {
   Check,
   Loader2,
   ExternalLink,
-  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react'
 import { api, type ApiItem, type ApiProject, type ItemUpdatePayload } from '@/lib/api'
 import { useRolodexAuth } from '@/hooks/use-auth'
@@ -20,6 +21,8 @@ interface ItemDetailModalProps {
   onClose: () => void
   onItemUpdated: (item: ApiItem) => void
   onItemDeleted: (itemId: string) => void
+  onPrev?: () => void
+  onNext?: () => void
 }
 
 type Tab = 'details' | 'edit'
@@ -29,6 +32,8 @@ export default function ItemDetailModal({
   onClose,
   onItemUpdated,
   onItemDeleted,
+  onPrev,
+  onNext,
 }: ItemDetailModalProps) {
   const { getToken } = useRolodexAuth()
   const [tab, setTab] = useState<Tab>('details')
@@ -56,14 +61,16 @@ export default function ItemDetailModal({
   const [addingToProject, setAddingToProject] = useState<string | null>(null)
   const [addedToProject, setAddedToProject] = useState<string | null>(null)
 
-  // Close on Escape
+  // Keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
+      if (e.key === 'ArrowLeft' && onPrev && tab === 'details') onPrev()
+      if (e.key === 'ArrowRight' && onNext && tab === 'details') onNext()
     }
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [onClose])
+  }, [onClose, onPrev, onNext, tab])
 
   // Prevent body scroll when modal is open
   useEffect(() => {
@@ -258,7 +265,7 @@ export default function ItemDetailModal({
         <div className="flex-1 overflow-y-auto">
           <div className="grid md:grid-cols-[1fr,1fr] gap-0">
             {/* Image */}
-            <div className="relative aspect-square bg-gray-100 md:aspect-auto md:min-h-[400px]">
+            <div className="relative aspect-square bg-gray-100 md:aspect-auto md:min-h-[400px] group/img">
               <Image
                 src={item.img_url}
                 alt={item.title || 'Product image'}
@@ -267,6 +274,22 @@ export default function ItemDetailModal({
                 sizes="(max-width: 768px) 100vw, 50vw"
                 unoptimized
               />
+              {onPrev && (
+                <button
+                  onClick={onPrev}
+                  className="absolute left-2 top-1/2 -translate-y-1/2 p-2 rounded-full bg-white/80 text-gray-700 shadow-sm opacity-0 group-hover/img:opacity-100 transition-opacity hover:bg-white"
+                >
+                  <ChevronLeft className="w-5 h-5" />
+                </button>
+              )}
+              {onNext && (
+                <button
+                  onClick={onNext}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-full bg-white/80 text-gray-700 shadow-sm opacity-0 group-hover/img:opacity-100 transition-opacity hover:bg-white"
+                >
+                  <ChevronRight className="w-5 h-5" />
+                </button>
+              )}
             </div>
 
             {/* Content */}

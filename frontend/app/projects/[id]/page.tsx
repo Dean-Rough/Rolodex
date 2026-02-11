@@ -354,14 +354,19 @@ export default function ProjectDetailPage() {
         )}
       </div>
 
-      {selectedItem && (
-        <ItemDetailModal
-          item={selectedItem}
-          onClose={() => setSelectedItem(null)}
-          onItemUpdated={handleItemUpdated}
-          onItemDeleted={handleItemDeleted}
-        />
-      )}
+      {selectedItem && project && (() => {
+        const idx = project.items.findIndex(i => i.id === selectedItem.id)
+        return (
+          <ItemDetailModal
+            item={selectedItem}
+            onClose={() => setSelectedItem(null)}
+            onItemUpdated={handleItemUpdated}
+            onItemDeleted={handleItemDeleted}
+            onPrev={idx > 0 ? () => setSelectedItem(project.items[idx - 1] as ApiItem) : undefined}
+            onNext={idx < project.items.length - 1 ? () => setSelectedItem(project.items[idx + 1] as ApiItem) : undefined}
+          />
+        )
+      })()}
     </div>
   )
 }
