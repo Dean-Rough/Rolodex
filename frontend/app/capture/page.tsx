@@ -4,8 +4,8 @@ import { ChangeEvent, FormEvent, useEffect, useMemo, useState, Suspense } from '
 import Link from 'next/link'
 import Image from 'next/image'
 import { useSearchParams } from 'next/navigation'
-import { AlertCircle, ArrowLeft, CheckCircle, Loader2, Sparkles } from 'lucide-react'
-import { api } from '../../lib/api'
+import { AlertCircle, ArrowLeft, CheckCircle, Loader2, Sparkles, FolderPlus, Check } from 'lucide-react'
+import { api, type ApiProject } from '../../lib/api'
 import { useRolodexAuth } from '../../hooks/use-auth'
 
 type CaptureFormState = {
@@ -55,6 +55,9 @@ function CaptureForm() {
   const [error, setError] = useState<string | null>(null)
   const [createdId, setCreatedId] = useState<string | null>(null)
   const [extracting, setExtracting] = useState(false)
+  const [projects, setProjects] = useState<ApiProject[]>([])
+  const [addingToProject, setAddingToProject] = useState<string | null>(null)
+  const [addedToProject, setAddedToProject] = useState<string | null>(null)
 
   const handleChange = (field: keyof CaptureFormState) => (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setForm(prev => ({ ...prev, [field]: event.target.value }))
@@ -129,6 +132,13 @@ function CaptureForm() {
       const created = await api.createItem(token, payload)
       setCreatedId(created.id)
       setStatus('success')
+      // Load projects for quick-add
+      try {
+        const projectList = await api.listProjects(token)
+        setProjects(projectList)
+      } catch {
+        // Non-critical — ignore
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to save item'
       setError(message)
@@ -257,12 +267,59 @@ function CaptureForm() {
           </div>
 
           {status === 'success' && createdId && (
-            <div className="flex items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-              <CheckCircle className="h-4 w-4" />
-              Saved!{' '}
-              <Link href="/" className="font-medium underline">
-                View in library
-              </Link>
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 space-y-3">
+              <div className="flex items-center gap-2 text-sm text-emerald-700">
+                <CheckCircle className="h-4 w-4" />
+                <span className="font-medium">Saved to your library!</span>
+                <Link href="/" className="ml-auto text-emerald-600 hover:text-emerald-800 underline text-xs">
+                  View library
+                </Link>
+              </div>
+              {projects.length > 0 && (
+                <div>
+                  <p className="text-xs text-emerald-600 mb-2">Quick add to a project:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {projects.slice(0, 5).map((project) => (
+                      <button
+                        key={project.id}
+                        onClick={async () => {
+                          setAddingToProject(project.id)
+                          try {
+                            const t = await getToken()
+                            await api.addItemToProject(t, project.id, createdId)
+                            setAddedToProject(project.id)
+                          } catch (err) {
+                            console.error('Failed to add to project:', err)
+                          } finally {
+                            setAddingToProject(null)
+                          }
+                        }}
+                        disabled={addingToProject === project.id || addedToProject === project.id}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-emerald-200 rounded-lg text-xs text-emerald-700 hover:bg-emerald-50 transition-colors disabled:opacity-60"
+                      >
+                        {addedToProject === project.id ? (
+                          <><Check className="w-3 h-3" /> Added</>
+                        ) : addingToProject === project.id ? (
+                          <><Loader2 className="w-3 h-3 animate-spin" /> Adding...</>
+                        ) : (
+                          <><FolderPlus className="w-3 h-3" /> {project.name}</>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <button
+                onClick={() => {
+                  setForm({ ...INITIAL_STATE })
+                  setStatus('idle')
+                  setCreatedId(null)
+                  setAddedToProject(null)
+                }}
+                className="text-xs text-emerald-600 hover:text-emerald-800 underline"
+              >
+                Capture another item
+              </button>
             </div>
           )}
 

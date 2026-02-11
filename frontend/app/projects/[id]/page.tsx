@@ -177,6 +177,13 @@ export default function ProjectDetailPage() {
 
               <div className="flex items-center gap-4 text-sm text-gray-500">
                 <span>{project.items.length} {project.items.length === 1 ? 'item' : 'items'}</span>
+                {project.items.some(i => i.price != null) && (
+                  <span className="text-gray-400">
+                    Total: {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(
+                      project.items.reduce((sum, item) => sum + (item.price || 0), 0)
+                    )}
+                  </span>
+                )}
 
                 {editingBudget ? (
                   <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
