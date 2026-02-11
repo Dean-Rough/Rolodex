@@ -9,6 +9,8 @@ import {
 } from '@clerk/nextjs'
 import './globals.css'
 
+export const dynamic = 'force-dynamic'
+
 export const metadata: Metadata = {
   title: 'Rolodex',
   description: 'FF&E product management for interior designers',
