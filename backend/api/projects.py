@@ -8,7 +8,7 @@ from typing import Any, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, Field
-from sqlalchemy import and_, delete, func, insert, select
+from sqlalchemy import and_, delete, func, insert, select, update as sql_update
 from sqlalchemy.exc import IntegrityError
 
 from backend.api.dependencies import AuthContext, get_auth, rate_limit
@@ -21,6 +21,12 @@ router = APIRouter(prefix="/api/projects", tags=["projects"])
 
 class ProjectCreate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
+
+
+class ProjectUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=120)
+    budget: Optional[float] = None
+    description: Optional[str] = None
 
 
 class ProjectItemLink(BaseModel):
@@ -96,6 +102,52 @@ def create_project(
         )
 
     return {"id": project_id, "name": body.name}
+
+
+@router.patch("/{project_id}")
+def update_project(
+    project_id: str,
+    body: ProjectUpdate,
+    auth: AuthContext = Depends(get_auth),
+):
+    """Update project name, budget, or description."""
+    updates = {k: v for k, v in body.model_dump().items() if v is not None}
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+
+    updates["updated_at"] = dt.datetime.now(dt.timezone.utc)
+    engine = get_engine()
+    with engine.begin() as connection:
+        result = connection.execute(
+            sql_update(projects_table)
+            .where(
+                and_(
+                    projects_table.c.id == project_id,
+                    projects_table.c.owner_id == auth.user_id,
+                )
+            )
+            .values(**updates)
+        )
+        if result.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        row = connection.execute(
+            select(
+                projects_table.c.id,
+                projects_table.c.name,
+                projects_table.c.budget,
+                projects_table.c.description,
+                projects_table.c.created_at,
+            ).where(projects_table.c.id == project_id)
+        ).mappings().first()
+
+    return {
+        "id": row["id"],
+        "name": row["name"],
+        "budget": row.get("budget"),
+        "description": row.get("description"),
+        "created_at": _to_iso(row["created_at"]),
+    }
 
 
 @router.get("/{project_id}")

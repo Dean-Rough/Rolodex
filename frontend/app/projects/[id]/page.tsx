@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Image from 'next/image'
 import Link from 'next/link'
-import { ArrowLeft, Trash2, Image as ImageIcon } from 'lucide-react'
+import { ArrowLeft, Trash2, Image as ImageIcon, Pencil, Check, X, DollarSign } from 'lucide-react'
 import { api, type ApiItem, type ApiProjectDetail } from '@/lib/api'
 import { useRolodexAuth } from '@/hooks/use-auth'
 import ItemDetailModal from '@/components/ItemDetailModal'
@@ -21,6 +21,10 @@ export default function ProjectDetailPage() {
   const [removeConfirmId, setRemoveConfirmId] = useState<string | null>(null)
   const [removing, setRemoving] = useState(false)
   const [selectedItem, setSelectedItem] = useState<ApiItem | null>(null)
+  const [editingName, setEditingName] = useState(false)
+  const [editName, setEditName] = useState('')
+  const [editingBudget, setEditingBudget] = useState(false)
+  const [editBudget, setEditBudget] = useState('')
 
   useEffect(() => {
     if (isLoaded) loadProject()
@@ -75,6 +79,31 @@ export default function ProjectDetailPage() {
     setSelectedItem(null)
   }
 
+  async function handleSaveName() {
+    if (!editName.trim() || !project) return
+    try {
+      const token = await getToken()
+      await api.updateProject(token, projectId, { name: editName.trim() })
+      setProject({ ...project, name: editName.trim() })
+      setEditingName(false)
+    } catch (err) {
+      console.error('Failed to update project name:', err)
+    }
+  }
+
+  async function handleSaveBudget() {
+    if (!project) return
+    try {
+      const token = await getToken()
+      const budgetVal = editBudget ? Number(editBudget) : undefined
+      await api.updateProject(token, projectId, { budget: budgetVal })
+      setProject({ ...project, budget: budgetVal })
+      setEditingBudget(false)
+    } catch (err) {
+      console.error('Failed to update budget:', err)
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -106,28 +135,107 @@ export default function ProjectDetailPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="container mx-auto px-4 py-8">
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <Link
-              href="/projects"
-              className="text-sm text-gray-500 hover:text-gray-700 mb-2 inline-flex items-center gap-1"
-            >
-              <ArrowLeft className="w-3 h-3" />
-              Back to Projects
-            </Link>
-            <h1 className="text-3xl font-bold text-gray-900">{project.name}</h1>
-            <p className="text-sm text-gray-500 mt-1">
-              {project.items.length} {project.items.length === 1 ? 'item' : 'items'}
-            </p>
-          </div>
-          <div className="flex gap-3">
-            <button
-              onClick={() => router.push(`/projects/${projectId}/moodboard`)}
-              className="px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors text-sm disabled:opacity-50"
-              disabled={project.items.length === 0}
-            >
-              Export Moodboard
-            </button>
+        <div className="mb-8">
+          <Link
+            href="/projects"
+            className="text-sm text-gray-500 hover:text-gray-700 mb-3 inline-flex items-center gap-1"
+          >
+            <ArrowLeft className="w-3 h-3" />
+            Back to Projects
+          </Link>
+
+          <div className="flex items-start justify-between">
+            <div className="flex-1">
+              {editingName ? (
+                <div className="flex items-center gap-2 mb-1">
+                  <input
+                    type="text"
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleSaveName()
+                      if (e.key === 'Escape') setEditingName(false)
+                    }}
+                    className="text-3xl font-bold text-gray-900 border-b-2 border-gray-900 bg-transparent outline-none w-full"
+                    autoFocus
+                  />
+                  <button onClick={handleSaveName} className="p-1.5 text-gray-600 hover:text-gray-900"><Check className="w-5 h-5" /></button>
+                  <button onClick={() => setEditingName(false)} className="p-1.5 text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 group mb-1">
+                  <h1 className="text-3xl font-bold text-gray-900">{project.name}</h1>
+                  <button
+                    onClick={() => { setEditName(project.name); setEditingName(true) }}
+                    className="p-1 text-gray-300 hover:text-gray-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                    title="Edit project name"
+                  >
+                    <Pencil className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+
+              <div className="flex items-center gap-4 text-sm text-gray-500">
+                <span>{project.items.length} {project.items.length === 1 ? 'item' : 'items'}</span>
+
+                {editingBudget ? (
+                  <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                    <DollarSign className="w-3.5 h-3.5" />
+                    <input
+                      type="number"
+                      min={0}
+                      step="100"
+                      value={editBudget}
+                      onChange={(e) => setEditBudget(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleSaveBudget()
+                        if (e.key === 'Escape') setEditingBudget(false)
+                      }}
+                      className="w-28 px-2 py-0.5 border border-gray-300 rounded text-sm"
+                      placeholder="Budget"
+                      autoFocus
+                    />
+                    <button onClick={handleSaveBudget} className="text-gray-600 hover:text-gray-900"><Check className="w-3.5 h-3.5" /></button>
+                    <button onClick={() => setEditingBudget(false)} className="text-gray-400 hover:text-gray-600"><X className="w-3.5 h-3.5" /></button>
+                  </div>
+                ) : project.budget != null ? (
+                  <button
+                    onClick={() => { setEditBudget(String(project.budget || '')); setEditingBudget(true) }}
+                    className="flex items-center gap-1 hover:text-gray-700 transition-colors"
+                    title="Edit budget"
+                  >
+                    <DollarSign className="w-3.5 h-3.5" />
+                    Budget: {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(project.budget)}
+                    {(() => {
+                      const totalSpend = project.items.reduce((sum, item) => sum + (item.price || 0), 0)
+                      const pct = project.budget ? Math.round((totalSpend / project.budget) * 100) : 0
+                      return (
+                        <span className={`ml-1 ${pct > 100 ? 'text-red-600 font-medium' : pct > 80 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                          ({pct}% used)
+                        </span>
+                      )
+                    })()}
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => { setEditBudget(''); setEditingBudget(true) }}
+                    className="text-gray-400 hover:text-gray-600 transition-colors text-xs"
+                  >
+                    + Set budget
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="flex gap-3 flex-shrink-0 ml-4">
+              <button
+                onClick={() => router.push(`/projects/${projectId}/moodboard`)}
+                className="px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors text-sm disabled:opacity-50"
+                disabled={project.items.length === 0}
+              >
+                Export Moodboard
+              </button>
+            </div>
           </div>
         </div>
 
