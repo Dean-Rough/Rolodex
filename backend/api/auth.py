@@ -8,14 +8,16 @@ from typing import Annotated
 
 import bcrypt
 import jwt
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import insert, select
 
-from backend.api.dependencies import AuthContext, get_auth
+from backend.api.dependencies import COOKIE_NAME, AuthContext, get_auth
 from backend.core.config import get_settings
 from backend.core.db import get_engine
 from backend.models import users_table
+
+_COOKIE_MAX_AGE = 7 * 24 * 60 * 60  # 7 days, matching token expiry
 
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -99,13 +101,25 @@ def create_access_token(user_id: str, email: str) -> str:
     return jwt.encode(payload, secret, algorithm="HS256")
 
 
+def _set_session_cookie(response: Response, token: str) -> None:
+    """Set the httpOnly session cookie on a response."""
+    response.set_cookie(
+        key=COOKIE_NAME,
+        value=token,
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        max_age=_COOKIE_MAX_AGE,
+        path="/",
+    )
+
+
 @router.post("/register", response_model=AuthResponse)
-async def register(payload: RegisterRequest) -> AuthResponse:
+async def register(payload: RegisterRequest, response: Response) -> AuthResponse:
     """Register a new user account."""
     engine = get_engine()
 
     with engine.begin() as conn:
-        # Check if user already exists
         existing = conn.execute(
             select(users_table.c.id).where(users_table.c.email == payload.email.lower())
         ).first()
@@ -113,7 +127,6 @@ async def register(payload: RegisterRequest) -> AuthResponse:
         if existing:
             raise HTTPException(status_code=400, detail="Email already registered")
 
-        # Create new user
         user_id = str(uuid.uuid4())
         password_hash = hash_password(payload.password)
 
@@ -130,8 +143,8 @@ async def register(payload: RegisterRequest) -> AuthResponse:
             ],
         )
 
-        # Generate access token
         access_token = create_access_token(user_id, payload.email.lower())
+        _set_session_cookie(response, access_token)
 
         return AuthResponse(
             access_token=access_token,
@@ -145,7 +158,7 @@ async def register(payload: RegisterRequest) -> AuthResponse:
 
 
 @router.post("/login", response_model=AuthResponse)
-async def login(payload: LoginRequest) -> AuthResponse:
+async def login(payload: LoginRequest, response: Response) -> AuthResponse:
     """Authenticate a user and return an access token."""
     engine = get_engine()
 
@@ -163,8 +176,8 @@ async def login(payload: LoginRequest) -> AuthResponse:
         if not user or not verify_password(payload.password, user.password_hash or ""):
             raise HTTPException(status_code=401, detail="Invalid email or password")
 
-        # Generate access token
         access_token = create_access_token(user.id, user.email)
+        _set_session_cookie(response, access_token)
 
         return AuthResponse(
             access_token=access_token,
@@ -236,6 +249,18 @@ async def extension_status(auth: Annotated[AuthContext, Depends(get_auth)] | Non
             )
     except Exception:  # noqa: BLE001
         return ExtensionStatusResponse(authenticated=False, user=None)
+
+
+@router.post("/logout", status_code=204, response_model=None)
+async def logout(response: Response):
+    """Clear the session cookie."""
+    response.delete_cookie(
+        key=COOKIE_NAME,
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        path="/",
+    )
 
 
 __all__ = ["router"]

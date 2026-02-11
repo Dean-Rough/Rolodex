@@ -20,21 +20,33 @@ class AuthContext(BaseModel):
     user_id: str
 
 
+COOKIE_NAME = "rolodex_session"
+
+
+def _extract_token(request: Request) -> str:
+    """Extract JWT from Authorization header or session cookie."""
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        token = auth_header.split(" ", 1)[1].strip()
+        if token:
+            return token
+
+    cookie_token = request.cookies.get(COOKIE_NAME, "").strip()
+    if cookie_token:
+        return cookie_token
+
+    raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
+
+
 def get_auth(request: Request) -> AuthContext:
-    """Validate the Authorization header and return the user context.
+    """Validate the Authorization header or session cookie and return the user context.
 
     Raises 401 if the token is missing, invalid, or unsigned.
     Raises 500 if no JWT secret is configured — the app cannot operate
     without one, and this is a deployment error, not a user error.
     """
 
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
-
-    token = auth_header.split(" ", 1)[1].strip()
-    if not token:
-        raise HTTPException(status_code=401, detail="Empty token")
+    token = _extract_token(request)
 
     settings = get_settings()
     secret = settings.supabase_jwt_secret or settings.jwt_secret

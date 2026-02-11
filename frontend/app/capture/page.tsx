@@ -8,7 +8,6 @@ import { AlertCircle, ArrowLeft, CheckCircle, Loader2, Sparkles } from 'lucide-r
 
 import { api } from '../../lib/api'
 
-const FALLBACK_TOKEN = process.env.NEXT_PUBLIC_DEMO_TOKEN || 'demo-token-12345'
 const CAPTURE_TOKEN_KEY = 'rolodex_capture_token'
 
 type CaptureFormState = {
@@ -56,13 +55,12 @@ function CaptureForm() {
   const [status, setStatus] = useState<SubmitState>('idle')
   const [error, setError] = useState<string | null>(null)
   const [createdId, setCreatedId] = useState<string | null>(null)
-  const [captureToken, setCaptureToken] = useState<string | null>(null)
-  const usingFallbackToken = captureToken === FALLBACK_TOKEN && Boolean(FALLBACK_TOKEN)
+  // Extension may pass a token via URL param; otherwise the httpOnly cookie handles auth.
+  const [captureToken, setCaptureToken] = useState<string | null>('')
 
   useEffect(() => {
     try {
-      const params = new URLSearchParams(window.location.search)
-      const urlToken = params.get('token')
+      const urlToken = new URLSearchParams(window.location.search).get('token')
 
       if (urlToken) {
         sessionStorage.setItem(CAPTURE_TOKEN_KEY, urlToken)
@@ -70,21 +68,15 @@ function CaptureForm() {
         return
       }
 
-      const stored =
-        sessionStorage.getItem(CAPTURE_TOKEN_KEY) ||
-        localStorage.getItem('rolodex_dev_token') ||
-        null
-
+      const stored = sessionStorage.getItem(CAPTURE_TOKEN_KEY)
       if (stored) {
         setCaptureToken(stored)
-      } else if (FALLBACK_TOKEN) {
-        setCaptureToken(FALLBACK_TOKEN)
       } else {
-        setCaptureToken(null)
+        // No explicit token — rely on httpOnly session cookie
+        setCaptureToken('')
       }
-    } catch (tokenError) {
-      console.warn('Unable to access capture token storage', tokenError)
-      setCaptureToken(FALLBACK_TOKEN || null)
+    } catch {
+      setCaptureToken('')
     }
   }, [])
 
@@ -287,17 +279,7 @@ function CaptureForm() {
 
           <div className="flex items-center justify-between">
             <div className="text-sm text-slate-500">
-              {captureToken ? (
-                usingFallbackToken ? (
-                  <span>
-                    Using the demo token for local development. Launch from the extension for secure captures.
-                  </span>
-                ) : (
-                  <span>Secure capture token detected. You are ready to save items.</span>
-                )
-              ) : (
-                <span>No capture token detected. Open this workspace from the extension after signing in.</span>
-              )}
+              <span>Authenticated via session. Ready to save items.</span>
             </div>
             <button
               type="submit"
