@@ -13,6 +13,7 @@ dist/
 build/
 .next/
 coverage/
+*.tsbuildinfo
 
 # Chrome Extension
 extension/dist/
