@@ -239,6 +239,36 @@ export default function ProjectDetailPage() {
           </div>
         </div>
 
+        {/* Budget progress bar */}
+        {project.budget != null && project.budget > 0 && project.items.length > 0 && (() => {
+          const totalSpend = project.items.reduce((sum, item) => sum + (item.price || 0), 0)
+          const pct = Math.min(Math.round((totalSpend / project.budget!) * 100), 100)
+          const overBudget = totalSpend > project.budget!
+          return (
+            <div className="mb-6 bg-white rounded-lg border border-gray-200 p-4">
+              <div className="flex items-center justify-between mb-2 text-sm">
+                <span className="text-gray-600">
+                  {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(totalSpend)}
+                  {' '}of{' '}
+                  {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(project.budget!)}
+                </span>
+                <span className={`font-medium ${overBudget ? 'text-red-600' : pct > 80 ? 'text-amber-600' : 'text-gray-600'}`}>
+                  {overBudget
+                    ? `$${new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(totalSpend - project.budget!)} over budget`
+                    : `$${new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(project.budget! - totalSpend)} remaining`
+                  }
+                </span>
+              </div>
+              <div className="w-full bg-gray-100 rounded-full h-2">
+                <div
+                  className={`h-2 rounded-full transition-all ${overBudget ? 'bg-red-500' : pct > 80 ? 'bg-amber-500' : 'bg-emerald-500'}`}
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+            </div>
+          )
+        })()}
+
         {project.items.length === 0 && (
           <div className="text-center py-16 bg-white rounded-lg border border-gray-200">
             <ImageIcon className="mx-auto mb-4 h-12 w-12 text-gray-300" />
@@ -269,6 +299,12 @@ export default function ProjectDetailPage() {
                     sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
                     unoptimized
                   />
+                  {item.colour_hex && (
+                    <div
+                      className="absolute top-2 right-2 w-5 h-5 rounded-full border-2 border-white shadow-sm"
+                      style={{ backgroundColor: item.colour_hex }}
+                    />
+                  )}
                 </div>
                 <div className="p-4">
                   <h3 className="font-semibold text-gray-900 mb-1 line-clamp-2 text-sm">
