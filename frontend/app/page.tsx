@@ -1,13 +1,11 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { AlertCircle, LogOut } from 'lucide-react'
+import { AlertCircle } from 'lucide-react'
 import ItemGrid, { Item, FilterOptions } from '../components/ItemGrid'
 import { api, ApiItem, SearchOptions } from '../lib/api'
-import { useAuth } from '@/lib/auth-context'
 
 export default function Home() {
-  const { user, logout } = useAuth()
   const [items, setItems] = useState<Item[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -109,26 +107,6 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Nav */}
-      <header className="border-b bg-white">
-        <div className="container mx-auto flex items-center justify-between px-4 py-3">
-          <h2 className="text-lg font-semibold text-gray-900">Rolodex</h2>
-          {user && (
-            <div className="flex items-center gap-3">
-              <span className="text-sm text-gray-500">{user.email}</span>
-              <button
-                onClick={logout}
-                className="flex items-center gap-1 rounded px-2 py-1 text-sm text-gray-500 hover:bg-gray-100 hover:text-gray-700"
-              >
-                <LogOut className="h-3.5 w-3.5" />
-                Sign out
-              </button>
-            </div>
-          )}
-        </div>
-      </header>
-
-      {/* Main Content */}
       <div className="container mx-auto px-4 py-8">
         <div className="mb-8">
           <h1 className="text-4xl font-bold text-gray-900 mb-2">Your Product Library</h1>

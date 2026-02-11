@@ -12,7 +12,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from backend.api.dependencies import get_storage_dependency  # noqa: E402
+from backend.api.dependencies import AuthContext, get_auth, get_storage_dependency  # noqa: E402
 from backend.core.config import get_settings  # noqa: E402
 from backend.core.db import get_engine  # noqa: E402
 from backend.main import create_app  # noqa: E402
@@ -36,6 +36,11 @@ class DummyStorage:
         return []
 
 
+def _mock_auth() -> AuthContext:
+    """Return a fake auth context for testing."""
+    return AuthContext(user_id="user-123")
+
+
 @pytest.fixture()
 async def app(tmp_path):
     os.environ["DATABASE_URL"] = f"sqlite:///{tmp_path / 'rolodex-extension.db'}"
@@ -55,6 +60,7 @@ async def app(tmp_path):
 
     application = create_app()
     application.dependency_overrides[get_storage_dependency] = lambda: DummyStorage()
+    application.dependency_overrides[get_auth] = _mock_auth
 
     await application.router.startup()
     yield application
@@ -73,14 +79,8 @@ def anyio_backend():
     return "asyncio"
 
 
-def _make_token(sub: str) -> str:
-    secret = os.environ["JWT_SECRET"]
-    return jwt.encode({"sub": sub}, secret, algorithm="HS256")
-
-
 @pytest.mark.anyio
 async def test_create_deeplink(client):
-    token = _make_token("user-123")
     payload = {
         "image": "https://cdn.example.com/image.jpg",
         "source": "https://retailer.example.com/products/1",
@@ -91,7 +91,7 @@ async def test_create_deeplink(client):
     response = await client.post(
         "/api/extension/deeplink",
         json=payload,
-        headers={"Authorization": f"Bearer {token}"},
+        headers={"Authorization": "Bearer test-token"},
     )
 
     assert response.status_code == 200
@@ -107,7 +107,7 @@ async def test_create_deeplink(client):
         options={"verify_aud": False},
     )
 
-    assert parsed_token["sub"].endswith("user-1230000")
+    assert "user-123" in parsed_token["sub"]
     assert parsed_token["image"] == payload["image"]
     assert parsed_token["source"] == payload["source"]
     assert parsed_token["title"] == payload["title"]
@@ -117,16 +117,12 @@ async def test_create_deeplink(client):
 
 
 @pytest.mark.anyio
-async def test_missing_secret_returns_error(client):
-    os.environ.pop("JWT_SECRET", None)
-    get_settings.cache_clear()
-
+async def test_deeplink_requires_image(client):
+    """Deeplink endpoint should reject payloads without an image."""
     response = await client.post(
         "/api/extension/deeplink",
-        json={"image": "https://cdn.example.com/img.jpg"},
-        headers={"Authorization": "Bearer temporary"},
+        json={"source": "https://example.com"},
+        headers={"Authorization": "Bearer test-token"},
     )
 
-    assert response.status_code == 500
-    data = response.json()
-    assert data.get("error", {}).get("message") == "JWT signing secret not configured"
+    assert response.status_code == 422

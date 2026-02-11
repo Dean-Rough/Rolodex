@@ -12,6 +12,7 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
+    "@clerk/nextjs": "^6.37.3",
     "@tailwindcss/postcss": "^4.1.18",
     "html2canvas": "^1.4.1",
     "jspdf": "^2.5.2",

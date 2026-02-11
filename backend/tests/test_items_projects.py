@@ -12,7 +12,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from backend.api.dependencies import get_storage_dependency  # noqa: E402
+from backend.api.dependencies import AuthContext, get_auth, get_storage_dependency  # noqa: E402
 from backend.core.config import get_settings  # noqa: E402
 from backend.core.db import get_engine  # noqa: E402
 from backend.main import create_app  # noqa: E402
@@ -54,6 +54,7 @@ async def app(tmp_path):
     app = create_app()
     dummy_storage = DummyStorage()
     app.dependency_overrides[get_storage_dependency] = lambda: dummy_storage
+    app.dependency_overrides[get_auth] = lambda: AuthContext(user_id="00000000-0000-0000-0000-test-token00")
     await app.router.startup()
     yield app
     await app.router.shutdown()
