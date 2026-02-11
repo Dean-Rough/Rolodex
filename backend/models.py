@@ -31,7 +31,7 @@ items_table = Table(
     "items",
     metadata,
     Column("id", String, primary_key=True),
-    Column("owner_id", String, nullable=False, index=True),
+    Column("owner_id", String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True),
     Column("img_url", Text, nullable=False),
     Column("title", Text),
     Column("vendor", Text),
@@ -56,7 +56,7 @@ projects_table = Table(
     "projects",
     metadata,
     Column("id", String, primary_key=True),
-    Column("owner_id", String, nullable=False, index=True),
+    Column("owner_id", String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True),
     Column("name", Text, nullable=False),
     Column("budget", Float),  # Project budget
     Column("description", Text),  # Project description
@@ -68,7 +68,7 @@ saved_searches_table = Table(
     "saved_searches",
     metadata,
     Column("id", String, primary_key=True),
-    Column("owner_id", String, nullable=False, index=True),
+    Column("owner_id", String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True),
     Column("name", String(255), nullable=False),
     Column("filters", JSON, nullable=False),  # Stored filter configuration
     Column("created_at", DateTime(timezone=True), server_default=func.now()),
