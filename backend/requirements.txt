@@ -5,12 +5,10 @@ alembic==1.12.1
 psycopg2-binary==2.9.9
 pydantic==2.5.0
 python-dotenv==1.0.0
-celery
-redis==6.2.0
 httpx==0.28.1
 pytest==8.3.4
 pytest-cov==5.0.0
-PyJWT==2.10.1
+PyJWT[crypto]==2.10.1
 openai==1.79.0
 python-multipart==0.0.6
 pillow==10.3.0

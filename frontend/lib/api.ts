@@ -122,13 +122,14 @@ class ApiError extends Error {
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const url = `${API_BASE_URL}${path}`
-  
+
   try {
     const res = await fetch(url, {
       ...init,
-      headers: { 
-        'Content-Type': 'application/json', 
-        ...(init.headers || {}) 
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(init.headers || {})
       },
     })
     
@@ -219,6 +220,15 @@ function setCache<T>(key: string, data: T, ttl: number): void {
   }
 }
 
+/**
+ * Build auth headers. When token is empty, no Authorization header is sent
+ * and authentication relies on the httpOnly session cookie instead.
+ */
+function authHeaders(token: string): Record<string, string> {
+  if (!token) return {}
+  return { Authorization: `Bearer ${token}` }
+}
+
 export const api = {
   // Authentication
   async register(payload: RegisterPayload): Promise<AuthResponse> {
@@ -239,13 +249,13 @@ export const api = {
 
   async getCurrentUser(token: string): Promise<UserProfile> {
     return request<UserProfile>('/api/auth/me', {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: authHeaders(token),
     })
   },
 
   async getExtensionStatus(token: string): Promise<{ authenticated: boolean; user: UserProfile | null }> {
     return request<{ authenticated: boolean; user: UserProfile | null }>('/api/auth/extension/status', {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: authHeaders(token),
     })
   },
 
@@ -273,7 +283,7 @@ export const api = {
     })
     
     const response = await request<ListItemsResponse>(`/api/items${queryParams}`, {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: authHeaders(token),
     })
     
     if (useCache) {
@@ -314,7 +324,7 @@ export const api = {
     })
     
     const response = await request<ListItemsResponse>(`/api/items${queryParams}`, {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: authHeaders(token),
     })
     
     if (useCache) {
@@ -327,14 +337,14 @@ export const api = {
   // Get item details
   async getItem(token: string, itemId: string): Promise<ApiItem> {
     return request<ApiItem>(`/api/items/${itemId}`, {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: authHeaders(token),
     })
   },
 
   async createItem(token: string, payload: CreateItemPayload): Promise<ApiItem> {
     const response = await request<ApiItem>(`/api/items`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
+      headers: authHeaders(token),
       body: JSON.stringify(payload),
     })
     cache.clear()
@@ -344,7 +354,7 @@ export const api = {
   async updateItem(token: string, itemId: string, payload: ItemUpdatePayload): Promise<ApiItem> {
     const response = await request<ApiItem>(`/api/items/${itemId}`, {
       method: 'PATCH',
-      headers: { Authorization: `Bearer ${token}` },
+      headers: authHeaders(token),
       body: JSON.stringify(payload),
     })
     cache.clear()
@@ -354,7 +364,7 @@ export const api = {
   async deleteItem(token: string, itemId: string): Promise<void> {
     await request<void>(`/api/items/${itemId}`, {
       method: 'DELETE',
-      headers: { Authorization: `Bearer ${token}` },
+      headers: authHeaders(token),
     })
     cache.clear()
   },
@@ -362,7 +372,7 @@ export const api = {
   async batchDeleteItems(token: string, itemIds: string[]): Promise<void> {
     await request<void>(`/api/items/batch-delete`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
+      headers: authHeaders(token),
       body: JSON.stringify(itemIds),
     })
     cache.clear()
@@ -370,21 +380,21 @@ export const api = {
 
   async findSimilarItems(token: string, itemId: string, limit = 10): Promise<ListItemsResponse> {
     return request<ListItemsResponse>(`/api/items/${itemId}/similar?limit=${limit}`, {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: authHeaders(token),
     })
   },
 
   // Projects
   async listProjects(token: string): Promise<ApiProject[]> {
     return request<ApiProject[]>('/api/projects', {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: authHeaders(token),
     })
   },
 
   async createProject(token: string, name: string): Promise<ApiProject> {
     const response = await request<ApiProject>('/api/projects', {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
+      headers: authHeaders(token),
       body: JSON.stringify({ name }),
     })
     cache.clear()
@@ -393,14 +403,14 @@ export const api = {
 
   async getProject(token: string, projectId: string): Promise<ApiProjectDetail> {
     return request<ApiProjectDetail>(`/api/projects/${projectId}`, {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: authHeaders(token),
     })
   },
 
   async addItemToProject(token: string, projectId: string, itemId: string): Promise<void> {
     await request<void>(`/api/projects/${projectId}/add_item`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
+      headers: authHeaders(token),
       body: JSON.stringify({ item_id: itemId }),
     })
     cache.clear()
@@ -409,7 +419,7 @@ export const api = {
   async removeItemFromProject(token: string, projectId: string, itemId: string): Promise<void> {
     await request<void>(`/api/projects/${projectId}/remove_item`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
+      headers: authHeaders(token),
       body: JSON.stringify({ item_id: itemId }),
     })
     cache.clear()
@@ -418,7 +428,7 @@ export const api = {
   async deleteProject(token: string, projectId: string): Promise<void> {
     await request<void>(`/api/projects/${projectId}`, {
       method: 'DELETE',
-      headers: { Authorization: `Bearer ${token}` },
+      headers: authHeaders(token),
     })
     cache.clear()
   },
@@ -426,28 +436,28 @@ export const api = {
   // Saved Searches
   async listSavedSearches(token: string): Promise<SavedSearch[]> {
     return request<SavedSearch[]>('/api/searches', {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: authHeaders(token),
     })
   },
 
   async createSavedSearch(token: string, name: string, filters: SearchOptions): Promise<SavedSearch> {
     return request<SavedSearch>('/api/searches', {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
+      headers: authHeaders(token),
       body: JSON.stringify({ name, filters }),
     })
   },
 
   async getSavedSearch(token: string, searchId: string): Promise<SavedSearch> {
     return request<SavedSearch>(`/api/searches/${searchId}`, {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: authHeaders(token),
     })
   },
 
   async deleteSavedSearch(token: string, searchId: string): Promise<void> {
     await request<void>(`/api/searches/${searchId}`, {
       method: 'DELETE',
-      headers: { Authorization: `Bearer ${token}` },
+      headers: authHeaders(token),
     })
   },
 

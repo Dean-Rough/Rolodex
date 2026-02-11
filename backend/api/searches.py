@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from typing import Annotated, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel
 from sqlalchemy import and_, delete, insert, select
 
@@ -135,7 +135,7 @@ async def get_saved_search(
     )
 
 
-@router.delete("/{search_id}", status_code=204)
+@router.delete("/{search_id}", status_code=204, response_model=None)
 async def delete_saved_search(
     search_id: str,
     auth: Annotated[AuthContext, Depends(get_auth)],

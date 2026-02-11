@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
+import os
 import time
 from collections import defaultdict, deque
 from typing import Deque, Dict
 
 import jwt
+from jwt import PyJWKClient
 from fastapi import HTTPException, Request
 from pydantic import BaseModel
 
-from backend.core.config import get_settings
 from backend.storage import StorageService, get_storage_service
 
 
@@ -20,46 +21,90 @@ class AuthContext(BaseModel):
     user_id: str
 
 
-def get_auth(request: Request) -> AuthContext:
-    """Validate the Authorization header and return the user context."""
+# ---------------------------------------------------------------------------
+# Clerk JWKS verification
+# ---------------------------------------------------------------------------
+# Clerk issues RS256 tokens. We verify them using the public JWKS endpoint
+# derived from CLERK_SECRET_KEY's issuer domain, or configured explicitly.
+# The PyJWKClient caches keys automatically.
 
+_jwks_client: PyJWKClient | None = None
+
+
+def _get_jwks_client() -> PyJWKClient:
+    """Lazily create and cache a PyJWKClient pointing at the Clerk JWKS endpoint."""
+    global _jwks_client
+    if _jwks_client is not None:
+        return _jwks_client
+
+    # Clerk JWKS URL follows the pattern:
+    # https://<clerk-frontend-api>/.well-known/jwks.json
+    # You can set CLERK_JWKS_URL explicitly, or we derive it from the
+    # publishable key (pk_test_<base64-encoded-domain>).
+    jwks_url = os.getenv("CLERK_JWKS_URL")
+
+    if not jwks_url:
+        # Derive from CLERK_PUBLISHABLE_KEY
+        pk = os.getenv("CLERK_PUBLISHABLE_KEY") or os.getenv("NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY", "")
+        if pk:
+            import base64
+            # pk_test_<base64-encoded-domain-with-$-suffix> or pk_live_<...>
+            encoded_part = pk.split("_", 2)[-1] if "_" in pk else ""
+            # Add padding
+            padded = encoded_part + "=" * (4 - len(encoded_part) % 4)
+            try:
+                domain = base64.b64decode(padded).decode().rstrip("$")
+                jwks_url = f"https://{domain}/.well-known/jwks.json"
+            except Exception:
+                pass
+
+    if not jwks_url:
+        raise RuntimeError(
+            "Cannot determine Clerk JWKS URL. "
+            "Set CLERK_JWKS_URL or CLERK_PUBLISHABLE_KEY environment variable."
+        )
+
+    _jwks_client = PyJWKClient(jwks_url)
+    return _jwks_client
+
+
+def _extract_token(request: Request) -> str:
+    """Extract JWT from Authorization header."""
     auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
+    if auth_header.startswith("Bearer "):
+        token = auth_header.split(" ", 1)[1].strip()
+        if token:
+            return token
 
-    token = auth_header.split(" ", 1)[1].strip()
-    if not token:
-        raise HTTPException(status_code=401, detail="Empty token")
+    raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
 
-    settings = get_settings()
-    secret = settings.supabase_jwt_secret or settings.jwt_secret
 
-    if secret:
-        try:
-            payload = jwt.decode(
-                token,
-                secret,
-                algorithms=["HS256", "HS512"],
-                options={"verify_aud": False},
-            )
-            uid = str(
-                payload.get("sub")
-                or payload.get("user_id")
-                or payload.get("id")
-                or payload.get("user")
-                or ""
-            )
-            if not uid:
-                raise ValueError("missing subject")
-            if len(uid) == 36 and uid.count("-") == 4:
-                return AuthContext(user_id=uid)
-            tail = (uid[:12] or "anonymous000000").ljust(12, "0")
-            return AuthContext(user_id=f"00000000-0000-0000-0000-{tail}")
-        except Exception as exc:  # noqa: BLE001
-            raise HTTPException(status_code=401, detail="Invalid token") from exc
+def get_auth(request: Request) -> AuthContext:
+    """Validate the Clerk-issued JWT and return the user context.
 
-    pseudo = (token[:12] or "anonymous000000").ljust(12, "0")
-    return AuthContext(user_id=f"00000000-0000-0000-0000-{pseudo}")
+    Clerk tokens are RS256-signed. We verify against Clerk's JWKS endpoint.
+    The 'sub' claim contains the Clerk user ID (e.g. 'user_abc123').
+    """
+
+    token = _extract_token(request)
+
+    try:
+        client = _get_jwks_client()
+        signing_key = client.get_signing_key_from_jwt(token)
+        payload = jwt.decode(
+            token,
+            signing_key.key,
+            algorithms=["RS256"],
+            options={"verify_aud": False},
+        )
+        uid = payload.get("sub", "")
+        if not uid:
+            raise ValueError("missing subject claim")
+        return AuthContext(user_id=uid)
+    except jwt.ExpiredSignatureError as exc:
+        raise HTTPException(status_code=401, detail="Token expired") from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=401, detail="Invalid token") from exc
 
 
 _RATE_BUCKETS: Dict[str, Deque[float]] = defaultdict(deque)

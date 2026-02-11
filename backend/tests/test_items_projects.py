@@ -5,13 +5,14 @@ import sys
 from typing import Any, Dict, List
 
 import httpx
+import jwt
 import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from backend.api.dependencies import get_storage_dependency  # noqa: E402
+from backend.api.dependencies import AuthContext, get_auth, get_storage_dependency  # noqa: E402
 from backend.core.config import get_settings  # noqa: E402
 from backend.core.db import get_engine  # noqa: E402
 from backend.main import create_app  # noqa: E402
@@ -40,6 +41,7 @@ async def app(tmp_path):
     db_path = tmp_path / "rolodex-test.db"
     os.environ["DATABASE_URL"] = f"sqlite:///{db_path}"
     os.environ["ROLODEX_SEED_DEMO"] = "0"
+    os.environ["JWT_SECRET"] = "test-secret"
     get_settings.cache_clear()
     get_engine.cache_clear()
 
@@ -52,6 +54,7 @@ async def app(tmp_path):
     app = create_app()
     dummy_storage = DummyStorage()
     app.dependency_overrides[get_storage_dependency] = lambda: dummy_storage
+    app.dependency_overrides[get_auth] = lambda: AuthContext(user_id="00000000-0000-0000-0000-test-token00")
     await app.router.startup()
     yield app
     await app.router.shutdown()
@@ -64,8 +67,13 @@ async def client(app):
         yield async_client
 
 
-def _auth_headers(token: str = "test-token") -> Dict[str, str]:
-    return {"Authorization": f"Bearer {token}"}
+def _make_token(sub: str = "00000000-0000-0000-0000-test-token00") -> str:
+    secret = os.environ["JWT_SECRET"]
+    return jwt.encode({"sub": sub}, secret, algorithm="HS256")
+
+
+def _auth_headers() -> Dict[str, str]:
+    return {"Authorization": f"Bearer {_make_token()}"}
 
 
 @pytest.mark.anyio

@@ -1,32 +1,36 @@
 "use client"
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { api, type ApiItem } from '@/lib/api'
-import { useQuery } from '@/lib/query'
 
 export default function ItemsPage() {
   const [items, setItems] = useState<ApiItem[]>([])
   const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
 
   const [q, setQ] = useState('')
   const [hex, setHex] = useState('')
   const [priceMax, setPriceMax] = useState<number | ''>('')
 
-  const token = typeof window !== 'undefined' ? localStorage.getItem('rolodex_dev_token') || 'dev-token' : 'dev-token'
-  const { data, error: qError, loading: qLoading, refetch } = useQuery<{ items: ApiItem[] }>(
-    `items:${q}:${hex}:${priceMax}`,
-    () => api.listItems(token, { query: q, hex, price_max: typeof priceMax === 'number' ? priceMax : undefined }),
-  )
-  useEffect(() => {
-    setError(qError ? String(qError) : null)
-    setLoading(qLoading)
-    setItems(data?.items || [])
-  }, [qError, qLoading, data])
+  const fetchItems = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const response = await api.listItems('', {
+        query: q || undefined,
+        hex: hex || undefined,
+        price_max: typeof priceMax === 'number' ? priceMax : undefined,
+      })
+      setItems(response.items)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load items')
+    } finally {
+      setLoading(false)
+    }
+  }, [q, hex, priceMax])
 
   useEffect(() => {
-    refetch()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    fetchItems()
+  }, [fetchItems])
 
   return (
     <div className="container mx-auto p-6">
@@ -35,7 +39,7 @@ export default function ItemsPage() {
         className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end"
         onSubmit={(e) => {
           e.preventDefault()
-          refetch()
+          fetchItems()
         }}
       >
         <div>
@@ -47,7 +51,7 @@ export default function ItemsPage() {
           <input value={hex} onChange={(e) => setHex(e.target.value)} className="border rounded px-2 py-1 w-28" placeholder="#4A6B3C" />
         </div>
         <div>
-          <label className="block text-sm text-gray-600">Price ≤</label>
+          <label className="block text-sm text-gray-600">Price &le;</label>
           <input
             value={priceMax}
             onChange={(e) => setPriceMax(e.target.value ? Number(e.target.value) : '')}
@@ -63,7 +67,7 @@ export default function ItemsPage() {
         </button>
       </form>
 
-      {loading && <p>Loading…</p>}
+      {loading && <p>Loading...</p>}
       {error && <p className="text-red-600">Error: {error}</p>}
       {!loading && !error && items.length === 0 && <p>No items yet.</p>}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
