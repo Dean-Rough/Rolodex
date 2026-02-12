@@ -407,6 +407,16 @@ export const api = {
     })
   },
 
+  async updateProject(token: string, projectId: string, payload: { name?: string; budget?: number; description?: string }): Promise<ApiProject> {
+    const response = await request<ApiProject>(`/api/projects/${projectId}`, {
+      method: 'PATCH',
+      headers: authHeaders(token),
+      body: JSON.stringify(payload),
+    })
+    cache.clear()
+    return response
+  },
+
   async addItemToProject(token: string, projectId: string, itemId: string): Promise<void> {
     await request<void>(`/api/projects/${projectId}/add_item`, {
       method: 'POST',

@@ -219,6 +219,8 @@ async def list_items(
     query: Optional[str] = None,
     hex: Optional[str] = None,
     price_max: Optional[float] = None,
+    category: Optional[str] = None,
+    vendor: Optional[str] = None,
     limit: int = 20,
     cursor: Optional[str] = None,
     semantic: bool = False,
@@ -242,6 +244,10 @@ async def list_items(
                 if hex and item.get("colour_hex") and hex.lower() not in item["colour_hex"].lower():
                     continue
                 if price_max is not None and item.get("price") and item["price"] > price_max:
+                    continue
+                if category and item.get("category") != category:
+                    continue
+                if vendor and item.get("vendor") != vendor:
                     continue
                 filtered_results.append(item)
 
@@ -278,6 +284,10 @@ async def list_items(
         filters.append(func.lower(items_table.c.colour_hex).like(f"%{hex.lower()}%"))
     if price_max is not None:
         filters.append(items_table.c.price <= price_max)
+    if category:
+        filters.append(items_table.c.category == category)
+    if vendor:
+        filters.append(items_table.c.vendor == vendor)
     cursor_dt = _parse_cursor(cursor)
     if cursor_dt is not None:
         filters.append(items_table.c.created_at < cursor_dt)

@@ -25,6 +25,10 @@ export interface ItemGridProps {
   onSearch?: (query: string) => void
   onFilter?: (filters: FilterOptions) => void
   onSort?: (sortBy: SortOption) => void
+  onItemClick?: (item: Item) => void
+  onLoadMore?: () => void
+  hasMore?: boolean
+  loadingMore?: boolean
   searchQuery?: string
   className?: string
   viewMode?: 'grid' | 'list'
@@ -77,7 +81,7 @@ const ItemSkeleton = ({ viewMode }: { viewMode: 'grid' | 'list' }) => {
 }
 
 // Individual item component
-const ItemCard = ({ item, viewMode }: { item: Item; viewMode: 'grid' | 'list' }) => {
+const ItemCard = ({ item, viewMode, onClick }: { item: Item; viewMode: 'grid' | 'list'; onClick?: () => void }) => {
   const [imageLoaded, setImageLoaded] = useState(false)
   const [imageError, setImageError] = useState(false)
 
@@ -94,7 +98,7 @@ const ItemCard = ({ item, viewMode }: { item: Item; viewMode: 'grid' | 'list' })
 
   if (viewMode === 'list') {
     return (
-      <div className="flex gap-4 p-4 border rounded-lg hover:shadow-md transition-shadow">
+      <div className={`flex gap-4 p-4 border rounded-lg hover:shadow-md transition-shadow ${onClick ? 'cursor-pointer' : ''}`} onClick={onClick}>
         <div className="relative w-24 h-24 flex-shrink-0 rounded-lg overflow-hidden bg-gray-100">
           {!imageError && item.img_url && (
             <Image
@@ -147,7 +151,7 @@ const ItemCard = ({ item, viewMode }: { item: Item; viewMode: 'grid' | 'list' })
   }
 
   return (
-    <div className="group border rounded-lg overflow-hidden hover:shadow-lg transition-shadow">
+    <div className={`group border rounded-lg overflow-hidden hover:shadow-lg transition-shadow ${onClick ? 'cursor-pointer' : ''}`} onClick={onClick}>
       <div className="relative aspect-square bg-gray-100">
         {!imageError && item.img_url && (
           <Image
@@ -208,6 +212,10 @@ export default function ItemGrid({
   onSearch,
   onFilter,
   onSort,
+  onItemClick,
+  onLoadMore,
+  hasMore = false,
+  loadingMore = false,
   searchQuery = '',
   className = '',
   viewMode = 'grid',
@@ -484,14 +492,29 @@ export default function ItemGrid({
           </p>
         </div>
       ) : (
-        <div className={viewMode === 'grid' 
-          ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"
-          : "space-y-4"
-        }>
-          {sortedItems.map((item) => (
-            <ItemCard key={item.id} item={item} viewMode={viewMode} />
-          ))}
-        </div>
+        <>
+          <div className={viewMode === 'grid'
+            ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"
+            : "space-y-4"
+          }>
+            {sortedItems.map((item) => (
+              <ItemCard key={item.id} item={item} viewMode={viewMode} onClick={onItemClick ? () => onItemClick(item) : undefined} />
+            ))}
+            {loadingMore && Array.from({ length: 4 }, (_, i) => (
+              <ItemSkeleton key={`loading-more-${i}`} viewMode={viewMode} />
+            ))}
+          </div>
+          {hasMore && !loadingMore && onLoadMore && (
+            <div className="mt-8 text-center">
+              <button
+                onClick={onLoadMore}
+                className="px-6 py-2.5 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                Load more
+              </button>
+            </div>
+          )}
+        </>
       )}
     </div>
   )

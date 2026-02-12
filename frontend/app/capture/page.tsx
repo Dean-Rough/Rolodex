@@ -4,11 +4,9 @@ import { ChangeEvent, FormEvent, useEffect, useMemo, useState, Suspense } from '
 import Link from 'next/link'
 import Image from 'next/image'
 import { useSearchParams } from 'next/navigation'
-import { AlertCircle, ArrowLeft, CheckCircle, Loader2, Sparkles } from 'lucide-react'
-
-import { api } from '../../lib/api'
-
-const CAPTURE_TOKEN_KEY = 'rolodex_capture_token'
+import { AlertCircle, ArrowLeft, CheckCircle, Loader2, Sparkles, FolderPlus, Check } from 'lucide-react'
+import { api, type ApiProject } from '../../lib/api'
+import { useRolodexAuth } from '../../hooks/use-auth'
 
 type CaptureFormState = {
   img_url: string
@@ -40,6 +38,7 @@ const INITIAL_STATE: CaptureFormState = {
 
 function CaptureForm() {
   const params = useSearchParams()
+  const { getToken, isSignedIn, isLoaded } = useRolodexAuth()
   const prefilled = useMemo(() => {
     const defaults = { ...INITIAL_STATE }
     const image = params.get('image') || params.get('img_url')
@@ -55,33 +54,54 @@ function CaptureForm() {
   const [status, setStatus] = useState<SubmitState>('idle')
   const [error, setError] = useState<string | null>(null)
   const [createdId, setCreatedId] = useState<string | null>(null)
-  // Extension may pass a token via URL param; otherwise the httpOnly cookie handles auth.
-  const [captureToken, setCaptureToken] = useState<string | null>('')
-
-  useEffect(() => {
-    try {
-      const urlToken = new URLSearchParams(window.location.search).get('token')
-
-      if (urlToken) {
-        sessionStorage.setItem(CAPTURE_TOKEN_KEY, urlToken)
-        setCaptureToken(urlToken)
-        return
-      }
-
-      const stored = sessionStorage.getItem(CAPTURE_TOKEN_KEY)
-      if (stored) {
-        setCaptureToken(stored)
-      } else {
-        // No explicit token — rely on httpOnly session cookie
-        setCaptureToken('')
-      }
-    } catch {
-      setCaptureToken('')
-    }
-  }, [])
+  const [extracting, setExtracting] = useState(false)
+  const [projects, setProjects] = useState<ApiProject[]>([])
+  const [addingToProject, setAddingToProject] = useState<string | null>(null)
+  const [addedToProject, setAddedToProject] = useState<string | null>(null)
 
   const handleChange = (field: keyof CaptureFormState) => (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setForm(prev => ({ ...prev, [field]: event.target.value }))
+  }
+
+  const handleExtract = async () => {
+    if (!form.img_url.trim()) return
+    setExtracting(true)
+    setError(null)
+
+    try {
+      const token = await getToken()
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'}/api/items/extract`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          imageUrl: form.img_url,
+          sourceUrl: form.src_url || undefined,
+          title: form.title || undefined,
+        }),
+      })
+
+      if (!res.ok) throw new Error(`Extraction failed (${res.status})`)
+
+      const data = await res.json()
+      setForm(prev => ({
+        ...prev,
+        title: data.title || prev.title,
+        vendor: data.vendor || prev.vendor,
+        price: data.price ? String(data.price) : prev.price,
+        currency: data.currency || prev.currency,
+        description: data.description || prev.description,
+        colour_hex: data.colour_hex || prev.colour_hex,
+        category: data.category || prev.category,
+        material: data.material || prev.material,
+      }))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'AI extraction failed')
+    } finally {
+      setExtracting(false)
+    }
   }
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -102,16 +122,23 @@ function CaptureForm() {
       src_url: form.src_url || undefined,
     }
 
-    if (!captureToken) {
-      setError('Missing capture token. Launch this page from the extension or sign in again.')
-      setStatus('error')
-      return
-    }
-
     try {
-      const created = await api.createItem(captureToken, payload)
+      const token = await getToken()
+      if (!token) {
+        setError('Not authenticated. Please sign in.')
+        setStatus('error')
+        return
+      }
+      const created = await api.createItem(token, payload)
       setCreatedId(created.id)
       setStatus('success')
+      // Load projects for quick-add
+      try {
+        const projectList = await api.listProjects(token)
+        setProjects(projectList)
+      } catch {
+        // Non-critical — ignore
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to save item'
       setError(message)
@@ -119,7 +146,7 @@ function CaptureForm() {
     }
   }
 
-  const canSubmit = form.img_url.trim().length > 0 && status !== 'saving' && Boolean(captureToken)
+  const canSubmit = form.img_url.trim().length > 0 && status !== 'saving' && isSignedIn
 
   return (
     <div className="grid gap-8 py-10 lg:grid-cols-[2fr,3fr]">
@@ -137,22 +164,29 @@ function CaptureForm() {
           ) : (
             <div className="flex h-80 flex-col items-center justify-center bg-slate-100 text-center text-slate-500">
               <Sparkles className="mb-2 h-10 w-10" />
-              <p className="px-12 text-sm">Drop a URL from the extension or paste an image link to preview it here.</p>
+              <p className="px-12 text-sm">Paste an image URL or use the extension to start capturing.</p>
             </div>
           )}
         </div>
 
+        {form.img_url && (
+          <button
+            type="button"
+            onClick={handleExtract}
+            disabled={extracting || !isSignedIn}
+            className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-700 transition-colors disabled:opacity-50"
+          >
+            {extracting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+            {extracting ? 'Extracting with AI...' : 'Auto-fill with AI'}
+          </button>
+        )}
+
         <div className="rounded-xl border bg-white p-6 shadow-sm">
           <h2 className="mb-2 text-lg font-semibold text-slate-900">How this works</h2>
-          <p className="text-sm text-slate-600">
-            The Chrome extension passes the page context into this workspace. Double-check the AI suggestion, tweak the details,
-            and press save to add the item to your library. Tokens last a few minutes for security—refresh if your session
-            expires.
-          </p>
-          <ul className="mt-4 space-y-2 text-sm text-slate-600">
-            <li>• Paste a product image URL or use the extension to launch this screen.</li>
-            <li>• Fill in vendor, pricing, colour, and material details.</li>
-            <li>• Hit <strong>Save to library</strong> and jump back to the main grid.</li>
+          <ul className="space-y-2 text-sm text-slate-600">
+            <li>1. Paste or capture a product image URL.</li>
+            <li>2. Click <strong>Auto-fill with AI</strong> to extract metadata.</li>
+            <li>3. Review, tweak, and save to your library.</li>
           </ul>
         </div>
       </section>
@@ -166,7 +200,7 @@ function CaptureForm() {
               required
               value={form.img_url}
               onChange={handleChange('img_url')}
-              placeholder="https://…"
+              placeholder="https://..."
               className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm shadow-sm focus:border-slate-400 focus:outline-none"
             />
           </div>
@@ -174,59 +208,27 @@ function CaptureForm() {
           <div className="grid gap-5 md:grid-cols-2">
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-700">Title</label>
-              <input
-                type="text"
-                value={form.title}
-                onChange={handleChange('title')}
-                placeholder="Sculptural brass floor lamp"
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm shadow-sm focus:border-slate-400 focus:outline-none"
-              />
+              <input type="text" value={form.title} onChange={handleChange('title')} placeholder="Sculptural brass floor lamp" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm shadow-sm focus:border-slate-400 focus:outline-none" />
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-700">Vendor</label>
-              <input
-                type="text"
-                value={form.vendor}
-                onChange={handleChange('vendor')}
-                placeholder="Design House"
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm shadow-sm focus:border-slate-400 focus:outline-none"
-              />
+              <input type="text" value={form.vendor} onChange={handleChange('vendor')} placeholder="Design House" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm shadow-sm focus:border-slate-400 focus:outline-none" />
             </div>
           </div>
 
           <div className="grid gap-5 md:grid-cols-[1fr,120px]">
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-700">Description</label>
-              <textarea
-                rows={4}
-                value={form.description}
-                onChange={handleChange('description')}
-                placeholder="Graceful arched profile with opal glass dome and dim-to-warm LED core."
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm shadow-sm focus:border-slate-400 focus:outline-none"
-              />
+              <textarea rows={4} value={form.description} onChange={handleChange('description')} placeholder="Graceful arched profile with opal glass dome." className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm shadow-sm focus:border-slate-400 focus:outline-none" />
             </div>
             <div className="grid gap-4">
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">Price</label>
-                <input
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  value={form.price}
-                  onChange={handleChange('price')}
-                  placeholder="1200"
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm shadow-sm focus:border-slate-400 focus:outline-none"
-                />
+                <input type="number" min={0} step="0.01" value={form.price} onChange={handleChange('price')} placeholder="1200" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm shadow-sm focus:border-slate-400 focus:outline-none" />
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">Currency</label>
-                <input
-                  type="text"
-                  value={form.currency}
-                  onChange={handleChange('currency')}
-                  placeholder="USD"
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm uppercase shadow-sm focus:border-slate-400 focus:outline-none"
-                />
+                <input type="text" value={form.currency} onChange={handleChange('currency')} placeholder="USD" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm uppercase shadow-sm focus:border-slate-400 focus:outline-none" />
               </div>
             </div>
           </div>
@@ -234,71 +236,90 @@ function CaptureForm() {
           <div className="grid gap-5 md:grid-cols-2">
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-700">Colour Hex</label>
-              <input
-                type="text"
-                value={form.colour_hex}
-                onChange={handleChange('colour_hex')}
-                placeholder="#C0A480"
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm shadow-sm focus:border-slate-400 focus:outline-none"
-              />
+              <input type="text" value={form.colour_hex} onChange={handleChange('colour_hex')} placeholder="#C0A480" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm shadow-sm focus:border-slate-400 focus:outline-none" />
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-700">Category</label>
-              <input
-                type="text"
-                value={form.category}
-                onChange={handleChange('category')}
-                placeholder="Lighting"
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm shadow-sm focus:border-slate-400 focus:outline-none"
-              />
+              <input type="text" value={form.category} onChange={handleChange('category')} placeholder="Lighting" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm shadow-sm focus:border-slate-400 focus:outline-none" />
             </div>
           </div>
 
           <div className="grid gap-5 md:grid-cols-2">
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-700">Material</label>
-              <input
-                type="text"
-                value={form.material}
-                onChange={handleChange('material')}
-                placeholder="Brass"
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm shadow-sm focus:border-slate-400 focus:outline-none"
-              />
+              <input type="text" value={form.material} onChange={handleChange('material')} placeholder="Brass" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm shadow-sm focus:border-slate-400 focus:outline-none" />
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-700">Source URL</label>
-              <input
-                type="url"
-                value={form.src_url}
-                onChange={handleChange('src_url')}
-                placeholder="https://retailer.com/product"
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm shadow-sm focus:border-slate-400 focus:outline-none"
-              />
+              <input type="url" value={form.src_url} onChange={handleChange('src_url')} placeholder="https://retailer.com/product" className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm shadow-sm focus:border-slate-400 focus:outline-none" />
             </div>
           </div>
 
-          <div className="flex items-center justify-between">
-            <div className="text-sm text-slate-500">
-              <span>Authenticated via session. Ready to save items.</span>
-            </div>
+          <div className="flex items-center justify-end">
             <button
               type="submit"
               disabled={!canSubmit}
               className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
             >
               {status === 'saving' ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
-              {status === 'saving' ? 'Saving…' : 'Save to library'}
+              {status === 'saving' ? 'Saving...' : 'Save to library'}
             </button>
           </div>
 
           {status === 'success' && createdId && (
-            <div className="flex items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-              <CheckCircle className="h-4 w-4" />
-              Saved! View it in the{' '}
-              <Link href="/" className="font-medium underline">
-                library
-              </Link>{' '}
-              (ID {createdId}).
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 space-y-3">
+              <div className="flex items-center gap-2 text-sm text-emerald-700">
+                <CheckCircle className="h-4 w-4" />
+                <span className="font-medium">Saved to your library!</span>
+                <Link href="/" className="ml-auto text-emerald-600 hover:text-emerald-800 underline text-xs">
+                  View library
+                </Link>
+              </div>
+              {projects.length > 0 && (
+                <div>
+                  <p className="text-xs text-emerald-600 mb-2">Quick add to a project:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {projects.slice(0, 5).map((project) => (
+                      <button
+                        key={project.id}
+                        onClick={async () => {
+                          setAddingToProject(project.id)
+                          try {
+                            const t = await getToken()
+                            await api.addItemToProject(t, project.id, createdId)
+                            setAddedToProject(project.id)
+                          } catch (err) {
+                            console.error('Failed to add to project:', err)
+                          } finally {
+                            setAddingToProject(null)
+                          }
+                        }}
+                        disabled={addingToProject === project.id || addedToProject === project.id}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-emerald-200 rounded-lg text-xs text-emerald-700 hover:bg-emerald-50 transition-colors disabled:opacity-60"
+                      >
+                        {addedToProject === project.id ? (
+                          <><Check className="w-3 h-3" /> Added</>
+                        ) : addingToProject === project.id ? (
+                          <><Loader2 className="w-3 h-3 animate-spin" /> Adding...</>
+                        ) : (
+                          <><FolderPlus className="w-3 h-3" /> {project.name}</>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <button
+                onClick={() => {
+                  setForm({ ...INITIAL_STATE })
+                  setStatus('idle')
+                  setCreatedId(null)
+                  setAddedToProject(null)
+                }}
+                className="text-xs text-emerald-600 hover:text-emerald-800 underline"
+              >
+                Capture another item
+              </button>
             </div>
           )}
 
@@ -317,20 +338,6 @@ function CaptureForm() {
 export default function CapturePage() {
   return (
     <div className="min-h-screen bg-gray-50">
-      <header className="border-b bg-white">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
-          <div className="flex items-center gap-3">
-            <Link href="/" className="flex items-center text-sm text-gray-500 hover:text-gray-700">
-              <ArrowLeft className="mr-1 h-4 w-4" /> Back to library
-            </Link>
-            <div className="inline-flex items-center rounded-full bg-slate-900/90 px-3 py-1 text-xs font-medium uppercase tracking-wide text-white">
-              Capture Workspace
-            </div>
-          </div>
-          <Sparkles className="h-5 w-5 text-emerald-500" />
-        </div>
-      </header>
-
       <main className="mx-auto max-w-5xl px-6">
         <Suspense fallback={
           <div className="flex h-64 items-center justify-center">
